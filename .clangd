@@ -1,0 +1,6 @@
+CompileFlags:
+  Add: [-Wall, -Wformat=2, -Wconversion]
+
+Diagnostics:
+  UnusedIncludes: Strict
+  MissingIncludes: Strict

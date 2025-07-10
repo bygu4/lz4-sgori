@@ -502,7 +502,7 @@ ForEachMacros:
 
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^(<|")linux/'
+  - Regex: '^(<|")(linux|asm|asm-generic)/'
     Priority: -1
 IncludeIsMainRegex: '(Test)?$'
 IndentCaseLabels: false
