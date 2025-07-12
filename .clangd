@@ -1,3 +1,6 @@
+If:
+  PathExclude: build/*
+
 CompileFlags:
   Add: [-Wall, -Wformat=2, -Wconversion]
 
