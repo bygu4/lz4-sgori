@@ -2,7 +2,7 @@ If:
   PathExclude: build/*
 
 CompileFlags:
-  Add: [-Wall, -Wformat=2, -Wconversion]
+  Add: [-Wall, -Wextra, -Wformat=2, -Wconversion]
 
 Diagnostics:
   UnusedIncludes: Strict
