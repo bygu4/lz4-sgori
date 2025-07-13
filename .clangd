@@ -2,7 +2,8 @@ If:
   PathExclude: build/*
 
 CompileFlags:
-  Add: [-Wall, -Wextra, -Wformat=2, -Wconversion]
+  Add: [-Wall, -Wextra, -Wformat=2, -Wconversion, -Wno-unknown-warning-option]
+  Remove: [-m*, -f*]
 
 Diagnostics:
   UnusedIncludes: Strict
