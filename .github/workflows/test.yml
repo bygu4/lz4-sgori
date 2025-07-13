@@ -7,7 +7,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install required packages
         run: >
-          sudo apt upgrade && sudo apt install -y
-          build-essential linux-headers-$(uname -r)
+          sudo apt update && sudo apt install -y
+          build-essential gcc-14 linux-headers-$(uname -r)
       - name: Build and run the testing script
         run: sudo sh test/test_all.sh

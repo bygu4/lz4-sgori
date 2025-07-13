@@ -6,7 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-format
-        run: sudo apt upgrade && sudo apt install -y clang-format
+        run: sudo apt update && sudo apt install -y clang-format
       - name: Run clang-format
         run: sudo sh scripts/check_with_clang_format.sh
   check-with-clang-tidy:
@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install required packages
         run: >
-          sudo apt upgrade && sudo apt install -y
-          build-essential linux-headers-$(uname -r) bear clang-tidy
+          sudo apt update && sudo apt install -y
+          build-essential gcc-14 linux-headers-$(uname -r) bear clang-tidy
       - name: Build and run clang-tidy
         run: sudo sh scripts/check_with_clang_tidy.sh
