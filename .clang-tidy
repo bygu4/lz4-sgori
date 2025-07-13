@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# clang-tidy configuration file. Intended for clang-tidy >= 20.
+#
+# For more information, see:
+#
+#   https://clang.llvm.org/extra/clang-tidy/
+#   https://clang.llvm.org/extra/clang-tidy/checks/list.html
+#
+---
+Checks:
+  - 'abseil-*'
+  - 'altera-*'
+  - 'android-*'
+  - 'boost-*'
+  - 'bugprone-*'
+  - 'cert-*'
+  - 'clang-analyzer-*'
+  - 'concurrency-*'
+  - 'cppcoreguidelines-*'
+  - 'darwin-*'
+  - 'fuchsia-*'
+  - 'google-*'
+  - 'hicpp-*'
+  - 'linuxkernel-*'
+  - 'llvm-*'
+  - 'llvmlibc-*'
+  - 'misc-*'
+  - 'modernize-*'
+  - 'mpi-*'
+  - 'objc-*'
+  - 'openmp-*'
+  - 'performance-*'
+  - 'portability-*'
+  - 'readability-*'
+  - 'zircon-*'
+  - '-altera-id-dependent-backward-branch'
+  - '-altera-unroll-loops'
+  - '-bugprone-assignment-in-if-condition'
+  - '-bugprone-easily-swappable-parameters'
+  - '-cppcoreguidelines-avoid-non-const-global-variables'
+  - '-cppcoreguidelines-interfaces-global-init'
+  - '-google-readability-braces-around-statements'
+  - '-hicpp-braces-around-statements'
+  - '-hicpp-signed-bitwise'
+  - '-llvm-include-order'
+  - '-performance-no-int-to-ptr'
+  - '-readability-braces-around-statements'
+  - '-readability-function-cognitive-complexity'
+  - '-readability-math-missing-parentheses'
+
+HeaderFileExtensions: ['h']
+ImplementationFileExtensions: ['c']
+...
