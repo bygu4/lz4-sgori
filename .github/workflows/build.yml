@@ -12,4 +12,4 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential linux-headers-$(uname -r)
       - name: Build the module
-        run: make
+        run: make CC=gcc-14
