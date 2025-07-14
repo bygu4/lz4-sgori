@@ -5,8 +5,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Info
-        run: gcc --version && ls /bin
       - name: Install required packages
         run: |
           sudo apt-get update
