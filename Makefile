@@ -10,6 +10,7 @@ COMPILE_COMMANDS := $(PWD)/compile_commands.json
 all: build
 
 build:
+	export C_INCLUDE_PATH=$(INCLUDE_DIR)
 	$(MAKE) -I $(INCLUDE_DIR) -C $(KERNEL_SOURCES_DIR) M=$(PWD) MO=$(OUTPUT_DIR) modules
 clean:
 	rm -rf $(OUTPUT_DIR) $(COMPILE_COMMANDS)
