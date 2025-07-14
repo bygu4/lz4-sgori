@@ -1,7 +1,7 @@
 KERNEL_VERSION := $(shell uname -r)
 KERNEL_SOURCES_DIR := /lib/modules/$(KERNEL_VERSION)/build
 
-INLCUDE_DIR := $(PDW)/include
+INCLUDE_DIR := $(PWD)/include
 OUTPUT_DIR := $(PWD)/build
 COMPILE_COMMANDS := $(PWD)/compile_commands.json
 
