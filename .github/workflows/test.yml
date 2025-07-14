@@ -5,10 +5,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Info
+        run: gcc --version && ls /bin
       - name: Install required packages
         run: |
-          sudo apt-get update && sudo apt-get install -y dnf
-          sudo dnf check-update
-          sudo dnf install -y gcc make kernel-devel
+          sudo apt-get update
+          sudo apt-get install -y build-essential linux-headers-$(uname -r)
       - name: Build and run the testing script
         run: sudo sh test/test_all.sh
