@@ -170,7 +170,7 @@ static void __exit LZ4E_module_exit(void)
 	int major = lzmod.major;
 	struct LZ4E_dev *lzdev = lzmod.lzdev;
 
-	unregister_blkdev((unsigned int)major, LZ4E_MODULE_NAME);
+	unregister_blkdev((unsigned int)major, LZ4E_DEVICE_NAME);
 	lzmod.major = 0;
 
 	LZ4E_dev_free(lzdev);

@@ -41,7 +41,7 @@ void LZ4E_chunk_free(struct LZ4E_chunk *chunk)
 
 	kfree(chunk->src_buf.data);
 	kfree(chunk->dst_buf.data);
-	kfree(chunk->stream);
+	kfree(chunk->wrkmem);
 
 	kfree(chunk);
 
@@ -60,7 +60,7 @@ struct LZ4E_chunk *LZ4E_chunk_alloc(int src_size)
 	int dst_size = LZ4_COMPRESSBOUND(src_size);
 	char *src_data;
 	char *dst_data;
-	LZ4_stream_t *stream;
+	void *wrkmem;
 	struct LZ4E_chunk *chunk;
 
 	chunk = kzalloc(sizeof(*chunk), GFP_NOIO);
@@ -83,10 +83,10 @@ struct LZ4E_chunk *LZ4E_chunk_alloc(int src_size)
 		goto free_chunk;
 	}
 
-	stream = kzalloc(LZ4_MEM_COMPRESS, GFP_NOIO);
-	chunk->stream = stream;
-	if (!stream) {
-		LZ4E_PR_ERR("failed to allocate compression stream");
+	wrkmem = kzalloc(LZ4_MEM_COMPRESS, GFP_NOIO);
+	chunk->wrkmem = wrkmem;
+	if (!wrkmem) {
+		LZ4E_PR_ERR("failed to allocate working memory");
 		goto free_chunk;
 	}
 
@@ -102,12 +102,12 @@ int LZ4E_chunk_compress(struct LZ4E_chunk *chunk)
 {
 	struct LZ4E_buffer src_buf = chunk->src_buf;
 	struct LZ4E_buffer dst_buf = chunk->dst_buf;
-	LZ4_stream_t *stream = chunk->stream;
+	void *wrkmem = chunk->wrkmem;
 	int ret;
 
 	ret = LZ4E_compress_default(src_buf.data, dst_buf.data,
 				    src_buf.data_size, dst_buf.buf_size,
-				    stream);
+				    wrkmem);
 	if (!ret) {
 		LZ4E_PR_ERR("failed to compress data");
 		return -EIO;

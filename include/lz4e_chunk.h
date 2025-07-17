@@ -24,7 +24,7 @@ struct LZ4E_buffer {
 struct LZ4E_chunk {
 	struct LZ4E_buffer src_buf;
 	struct LZ4E_buffer dst_buf;
-	LZ4_stream_t *stream;
+	void *wrkmem;
 } LZ4E_ALIGN_64;
 
 // Copy data from the given bio

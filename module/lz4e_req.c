@@ -6,6 +6,7 @@
  */
 
 #include <asm-generic/errno-base.h>
+#include <asm/page.h>
 #include <linux/bio.h>
 #include <linux/blk_types.h>
 #include <linux/blkdev.h>
@@ -66,6 +67,7 @@ static blk_status_t LZ4E_read_req_init(struct LZ4E_req *lzreq,
 		return BLK_STS_RESOURCE;
 	}
 
+	new_bio->bi_vcnt = original_bio->bi_vcnt;
 	lzreq->original_bio = original_bio;
 	lzreq->new_bio = new_bio;
 	lzreq->stats_to_update = stats_to_update;
@@ -97,6 +99,9 @@ static struct bio *LZ4E_alloc_new_bio(struct bio *original_bio,
 		return NULL;
 	}
 
+	new_bio->bi_iter.bi_sector = original_bio->bi_iter.bi_sector;
+
+	LZ4E_PR_DEBUG("allocated new bio");
 	return new_bio;
 }
 
@@ -125,6 +130,7 @@ static int LZ4E_add_buf_to_bio(struct bio *bio, struct LZ4E_buffer *buf)
 		page_len = min_t(unsigned int, data_len, PAGE_SIZE);
 	}
 
+	LZ4E_PR_DEBUG("added buffer to bio");
 	return 0;
 }
 
