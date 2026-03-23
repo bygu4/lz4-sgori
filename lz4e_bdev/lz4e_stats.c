@@ -22,11 +22,11 @@ void lz4e_stats_free(struct lz4e_stats *lzstats)
 	LZ4E_PR_DEBUG("released request stats");
 }
 
-struct lz4e_stats *lz4e_stats_alloc(void)
+struct lz4e_stats *lz4e_stats_alloc(gfp_t gfp_mask)
 {
 	struct lz4e_stats *lzstats;
 
-	lzstats = kzalloc(sizeof(*lzstats), GFP_KERNEL);
+	lzstats = kzalloc(sizeof(*lzstats), gfp_mask);
 	if (!lzstats) {
 		LZ4E_PR_ERR("failed to allocate request stats");
 		return NULL;

@@ -9,6 +9,7 @@
 #include <linux/blk_types.h>
 #include <linux/blkdev.h>
 #include <linux/gfp_types.h>
+#include <linux/init.h>
 #include <linux/nodemask_types.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
@@ -98,53 +99,61 @@ void lz4e_dev_free(struct lz4e_dev *lzdev)
 	LZ4E_PR_DEBUG("released block device context");
 }
 
-struct lz4e_dev *lz4e_dev_alloc(void)
+struct lz4e_dev *lz4e_dev_alloc(gfp_t gfp_mask)
 {
-	struct gendisk *disk;
+	struct lz4e_dev *lzdev;
 	struct lz4e_under_dev *under_dev;
+	struct gendisk *disk;
 	struct lz4e_stats *read_stats;
 	struct lz4e_stats *write_stats;
-	struct lz4e_dev *lzdev;
 
-	lzdev = kzalloc(sizeof(*lzdev), GFP_KERNEL);
+	lzdev = kzalloc(sizeof(*lzdev), gfp_mask);
 	if (!lzdev) {
-		LZ4E_PR_ERR("failed to allocate block device context");
-		return NULL;
+		LZ4E_PR_ERR("failed to allocate dev struct");
+		goto error;
 	}
 
-	under_dev = lz4e_under_dev_alloc();
-	lzdev->under_dev = under_dev;
+	under_dev = lz4e_under_dev_alloc(gfp_mask);
 	if (!under_dev) {
-		LZ4E_PR_ERR("failed to allocate underlying device context");
-		goto free_device;
+		LZ4E_PR_ERR("failed to allocate underlying device");
+		goto free_dev;
 	}
 
 	disk = lz4e_gendisk_alloc();
-	lzdev->disk = disk;
 	if (!disk) {
-		LZ4E_PR_ERR("failed to allocate generic disk context");
-		goto free_device;
+		LZ4E_PR_ERR("failed to allocate gendisk");
+		goto free_under_dev;
 	}
 
-	read_stats = lz4e_stats_alloc();
-	lzdev->read_stats = read_stats;
+	read_stats = lz4e_stats_alloc(gfp_mask);
 	if (!read_stats) {
 		LZ4E_PR_ERR("failed to allocate read stats");
-		goto free_device;
+		goto free_disk;
 	}
 
-	write_stats = lz4e_stats_alloc();
-	lzdev->write_stats = write_stats;
+	write_stats = lz4e_stats_alloc(gfp_mask);
 	if (!write_stats) {
 		LZ4E_PR_ERR("failed to allocate write stats");
-		goto free_device;
+		goto free_read_stats;
 	}
+
+	lzdev->under_dev = under_dev;
+	lzdev->disk = disk;
+	lzdev->read_stats = read_stats;
+	lzdev->write_stats = write_stats;
 
 	LZ4E_PR_DEBUG("allocated block device context");
 	return lzdev;
 
-free_device:
-	lz4e_dev_free(lzdev);
+free_read_stats:
+	lz4e_stats_free(read_stats);
+free_disk:
+	lz4e_gendisk_free(disk);
+free_under_dev:
+	lz4e_under_dev_free(under_dev);
+free_dev:
+	kfree(lzdev);
+error:
 	return NULL;
 }
 
@@ -155,7 +164,7 @@ int lz4e_dev_init(struct lz4e_dev *lzdev, const char *dev_path, int major,
 	struct lz4e_under_dev *under_dev = lzdev->under_dev;
 	int ret;
 
-	ret = lz4e_under_dev_open(under_dev, dev_path);
+	ret = lz4e_under_dev_init(under_dev, dev_path);
 	if (ret) {
 		LZ4E_PR_ERR("failed to open underlying device");
 		return ret;
@@ -177,7 +186,8 @@ void lz4e_dev_submit_bio(struct bio *original_bio)
 	struct lz4e_req *lzreq;
 	blk_status_t status;
 
-	lzreq = lz4e_req_alloc();
+	lzreq = lz4e_req_alloc(original_bio, lzdev->under_dev, GFP_NOIO,
+			       lzdev->comp_type);
 	if (!lzreq) {
 		LZ4E_PR_ERR("failed to allocate request context");
 		status = BLK_STS_RESOURCE;
@@ -192,7 +202,7 @@ void lz4e_dev_submit_bio(struct bio *original_bio)
 
 	lz4e_req_submit(lzreq);
 
-	LZ4E_PR_INFO("submitted bio request");
+	LZ4E_PR_DEBUG("submitted request");
 	return;
 
 free_request:

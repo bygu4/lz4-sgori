@@ -11,6 +11,7 @@
 #include <linux/bio.h>
 #include <linux/blk_types.h>
 #include <linux/fs.h>
+#include <linux/types.h>
 
 #include "lz4e_static.h"
 
@@ -22,10 +23,10 @@ struct lz4e_under_dev {
 } LZ4E_ALIGN_32;
 
 // Allocate underlying device context
-struct lz4e_under_dev *lz4e_under_dev_alloc(void);
+struct lz4e_under_dev *lz4e_under_dev_alloc(gfp_t gfp_mask);
 
 // Open underlying device
-int lz4e_under_dev_open(struct lz4e_under_dev *under_dev, const char *dev_path);
+int lz4e_under_dev_init(struct lz4e_under_dev *under_dev, const char *dev_path);
 
 // Free underlying device context
 void lz4e_under_dev_free(struct lz4e_under_dev *under_dev);

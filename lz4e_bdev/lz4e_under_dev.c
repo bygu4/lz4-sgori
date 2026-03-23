@@ -10,7 +10,6 @@
 #include <linux/blkdev.h>
 #include <linux/err.h>
 #include <linux/fs.h>
-#include <linux/gfp_types.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
 
@@ -23,49 +22,46 @@ void lz4e_under_dev_free(struct lz4e_under_dev *under_dev)
 	if (!under_dev)
 		return;
 
-	struct file *fbdev = under_dev->fbdev;
-	struct bio_set *bset = under_dev->bset;
+	if (under_dev->fbdev)
+		bdev_fput(under_dev->fbdev);
 
-	if (fbdev)
-		bdev_fput(fbdev);
-
-	if (bset) {
-		bioset_exit(bset);
-		kfree(bset);
-	}
+	bioset_exit(under_dev->bset);
+	kfree(under_dev->bset);
 
 	kfree(under_dev);
 
 	LZ4E_PR_DEBUG("released underlying device context");
 }
 
-struct lz4e_under_dev *lz4e_under_dev_alloc(void)
+struct lz4e_under_dev *lz4e_under_dev_alloc(gfp_t gfp_mask)
 {
 	struct lz4e_under_dev *under_dev;
 	struct bio_set *bset;
 
-	under_dev = kzalloc(sizeof(*under_dev), GFP_KERNEL);
+	under_dev = kzalloc(sizeof(*under_dev), gfp_mask);
 	if (!under_dev) {
 		LZ4E_PR_ERR("failed to allocate underlying device context");
-		return NULL;
+		goto error;
 	}
 
-	bset = kzalloc(sizeof(*bset), GFP_KERNEL);
-	under_dev->bset = bset;
+	bset = kzalloc(sizeof(*bset), gfp_mask);
 	if (!bset) {
 		LZ4E_PR_ERR("failed to allocate bio set");
-		goto free_device;
+		goto free_under_dev;
 	}
+
+	under_dev->bset = bset;
 
 	LZ4E_PR_DEBUG("allocated underlying device context");
 	return under_dev;
 
-free_device:
-	lz4e_under_dev_free(under_dev);
+free_under_dev:
+	kfree(under_dev);
+error:
 	return NULL;
 }
 
-int lz4e_under_dev_open(struct lz4e_under_dev *under_dev, const char *dev_path)
+int lz4e_under_dev_init(struct lz4e_under_dev *under_dev, const char *dev_path)
 {
 	struct bio_set *bset = under_dev->bset;
 	struct block_device *bdev;
