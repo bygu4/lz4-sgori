@@ -9,40 +9,45 @@
 #define LZ4E_CHUNK_H
 
 #include <linux/blk_types.h>
+#include <linux/bvec.h>
+#include <linux/types.h>
 
 #include "lz4e_static.h"
+#include "lz4e_under_dev.h"
 
-// Struct representing a contiguous data in memory
-struct lz4e_buffer {
-	struct bio *bio;
-	char *data;
-	int data_size;
-	int buf_size;
+typedef enum {
+	LZ4E_COMP_CONT, /* compression on contiguous buffer */
+	LZ4E_COMP_VECT, /* compression on each of bvecs */
+	LZ4E_COMP_STRM, /* streamed compression on bvecs */
+	LZ4E_COMP_EXTD, /* extended compression on scatter-gather buffers */
+} lz4e_comp_t;
+
+typedef enum {
+	LZ4E_READ,
+	LZ4E_WRITE,
+} lz4e_dir_t;
+
+struct lz4e_chunk_operations {
+	int (*init)(void *chunk, struct bio *src_bio, lz4e_dir_t data_dir);
+	int (*run_comp)(void *chunk);
+	int (*end)(void *chunk, struct bio *dst_bio, lz4e_dir_t data_dir);
+	void (*free)(void *chunk);
 } LZ4E_ALIGN_32;
 
-// Struct representing data to be compressed
-struct lz4e_chunk {
-	struct lz4e_buffer src_buf;
-	struct lz4e_buffer dst_buf;
-	void *wrkmem;
-} LZ4E_ALIGN_128;
+/* generic chunk for compression */
+typedef struct {
+	void *internal;
+	struct lz4e_chunk_operations *ops;
+} LZ4E_ALIGN_16 lz4e_chunk_t;
 
-// Copy data from the given bio
-void lz4e_buf_copy_from_bio(struct lz4e_buffer *dst, struct bio *src);
-
-// Allocate chunk for compression
-struct lz4e_chunk *lz4e_chunk_alloc(int src_size);
-
-// Compress data from source buffer into destination buffer
-int lz4e_chunk_compress(struct lz4e_chunk *chunk);
-
-// Decompress data from destination buffer into source buffer
-int lz4e_chunk_decompress(struct lz4e_chunk *chunk);
-
-// Compress data from src bio into dst bio using the extended algorithm
-int lz4e_chunk_compress_ext(struct lz4e_chunk *chunk);
-
-// Free chunk for compression
-void lz4e_chunk_free(struct lz4e_chunk *chunk);
+lz4e_chunk_t *lz4e_chunk_alloc(struct bio *original_bio,
+			       struct lz4e_under_dev *under_dev, gfp_t gfp_mask,
+			       lz4e_comp_t comp_type);
+int lz4e_chunk_init(lz4e_chunk_t *chunk, struct bio *src_bio,
+		    lz4e_dir_t data_dir);
+int lz4e_chunk_run_comp(lz4e_chunk_t *chunk);
+int lz4e_chunk_end(lz4e_chunk_t *chunk, struct bio *dst_bio,
+		   lz4e_dir_t data_dir);
+void lz4e_chunk_free(lz4e_chunk_t *chunk);
 
 #endif

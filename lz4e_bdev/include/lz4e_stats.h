@@ -22,7 +22,7 @@ struct lz4e_stats {
 } LZ4E_ALIGN_32;
 
 // Allocate request statistics
-struct lz4e_stats *lz4e_stats_alloc(void);
+struct lz4e_stats *lz4e_stats_alloc(gfp_t gfp_mask);
 
 // Update statistics using given bio
 void lz4e_stats_update(struct lz4e_stats *lzstats, struct bio *bio);

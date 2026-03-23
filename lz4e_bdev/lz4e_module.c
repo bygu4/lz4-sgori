@@ -6,6 +6,7 @@
  */
 
 #include <linux/blkdev.h>
+#include <linux/gfp_types.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -34,9 +35,9 @@ static int lz4e_create_disk(const char *arg, const struct kernel_param *kpar)
 		return -EBUSY;
 	}
 
-	lzdev = lz4e_dev_alloc();
+	lzdev = lz4e_dev_alloc(GFP_KERNEL);
 	if (!lzdev) {
-		LZ4E_PR_ERR("failed to allocate block device context");
+		LZ4E_PR_ERR("failed to allocate block device");
 		return -ENOMEM;
 	}
 
