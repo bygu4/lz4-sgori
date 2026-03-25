@@ -5,14 +5,17 @@
  * This file is released under the GPL.
  */
 
+#include <linux/bio.h>
 #include <linux/blk_types.h>
 #include <linux/fortify-string.h>
-#include <linux/gfp_types.h>
+#include <linux/ktime.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
+#include <linux/types.h>
 
 #include "include/lz4e_stats.h"
 
+#include "include/lz4e_chunk.h"
 #include "include/lz4e_static.h"
 
 void lz4e_stats_free(struct lz4e_stats *lzstats)
@@ -28,7 +31,8 @@ struct lz4e_stats *lz4e_stats_alloc(gfp_t gfp_mask)
 
 	lzstats = kzalloc(sizeof(*lzstats), gfp_mask);
 	if (!lzstats) {
-		LZ4E_PR_ERR("failed to allocate request stats");
+		LZ4E_PR_ERR("failed to allocate request stats: %zu bytes",
+			    sizeof(*lzstats));
 		return NULL;
 	}
 
@@ -36,7 +40,8 @@ struct lz4e_stats *lz4e_stats_alloc(gfp_t gfp_mask)
 	return lzstats;
 }
 
-void lz4e_stats_update(struct lz4e_stats *lzstats, struct bio *bio)
+void lz4e_stats_update(struct lz4e_stats *lzstats, struct bio *bio,
+		       lz4e_chunk_t *chunk)
 {
 	atomic64_inc(&lzstats->reqs_total);
 
@@ -45,8 +50,13 @@ void lz4e_stats_update(struct lz4e_stats *lzstats, struct bio *bio)
 		return;
 	}
 
-	atomic64_add((s64)bio->bi_vcnt, &lzstats->vec_count);
-	atomic64_add((s64)bio->bi_iter.bi_size, &lzstats->data_in_bytes);
+	atomic64_add((s64)chunk->comp_size, &lzstats->comp_bytes);
+	atomic64_add((s64)chunk->decomp_size, &lzstats->decomp_bytes);
+	atomic64_add((s64)bio_segments(bio), &lzstats->segments);
+
+	atomic64_add(ktime_to_ns(chunk->comp_time), &lzstats->comp_ns);
+	atomic64_add(ktime_to_ns(chunk->decomp_time), &lzstats->decomp_ns);
+	atomic64_add(ktime_to_ns(chunk->total_time), &lzstats->total_ns);
 
 	LZ4E_PR_DEBUG("updated request stats");
 }

@@ -5,10 +5,13 @@
  * This file is released under the GPL.
  */
 
-#ifndef LZ4E_CHUNK_PRIVATE_H
-#define LZ4E_CHUNK_PRIVATE_H
+#ifndef LZ4E_CHUNK_INTERNAL_H
+#define LZ4E_CHUNK_INTERNAL_H
 
 #include <linux/blk_types.h>
+#include <linux/ktime.h>
+#include <linux/timekeeping.h>
+#include <linux/types.h>
 
 #include "lz4e_static.h"
 
@@ -32,6 +35,7 @@ struct lz4e_chunk_vect {
 	struct lz4e_buffer *srcs;
 	struct lz4e_buffer *dsts;
 	void *wrkmem;
+	struct bvec_iter src_iter;
 	unsigned int buf_cnt;
 } LZ4E_ALIGN_64;
 
@@ -42,8 +46,22 @@ struct lz4e_chunk_extd {
 	struct lz4e_buffer src_buf;
 	struct lz4e_buffer dst_buf;
 	void *wrkmem;
-} LZ4E_ALIGN_64;
+	struct bvec_iter src_iter;
+} LZ4E_ALIGN_128;
 
 #define LZ4E_MEM_VECT(buf_cnt) ((buf_cnt) * sizeof(struct lz4e_buffer))
+
+/* wrapper for measuring time intervals */
+#define LZ4E_KTIME_WRAP(func, duration, ret)        \
+	do {                                        \
+		ktime_t start;                      \
+		ktime_t end;                        \
+                                                    \
+		start = ktime_get();                \
+		(ret) = (func);                     \
+		end = ktime_get();                  \
+                                                    \
+		(duration) = ktime_sub(end, start); \
+	} while (0)
 
 #endif

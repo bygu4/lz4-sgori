@@ -9,15 +9,19 @@
 #include <linux/blk_types.h>
 #include <linux/bvec.h>
 #include <linux/highmem.h>
+#include <linux/ktime.h>
 #include <linux/lz4.h>
+#include <linux/minmax.h>
+#include <linux/preempt.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
+#include <linux/timekeeping.h>
 #include <linux/types.h>
 
 #include "include/lz4e_chunk.h"
 
 #include "include/lz4e.h"
-#include "include/lz4e_chunk_private.h"
+#include "include/lz4e_chunk_internal.h"
 #include "include/lz4e_static.h"
 #include "include/lz4e_under_dev.h"
 
@@ -133,6 +137,9 @@ static inline void lz4e_chunk_vect_map_srcs(struct lz4e_chunk_vect *chunk)
 	struct bvec_iter iter;
 	int ibuf = 0;
 
+	/* restore iter in case of read */
+	chunk->src_bio->bi_iter = chunk->src_iter;
+
 	bio_for_each_segment (bvec, chunk->src_bio, iter) {
 		chunk->srcs[ibuf].data =
 			kmap_local_page(bvec.bv_page) + bvec.bv_offset;
@@ -149,25 +156,34 @@ static inline void lz4e_chunk_vect_unmap_srcs(struct lz4e_chunk_vect *chunk)
 }
 
 static inline int lz4e_chunk_vect_run_comp_generic(
-	struct lz4e_chunk_vect *chunk,
+	void *chunk_ptr,
 	int (*compress)(void *wrkmem, struct lz4e_buffer *src,
 			struct lz4e_buffer *dst),
 	int (*decompress)(void *wrkmem, struct lz4e_buffer *src,
 			  struct lz4e_buffer *dst))
 {
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_vect *internal = chunk->internal;
 	int ret;
 
+	unsigned int comp_size = 0;
+	unsigned int decomp_size = 0;
+	ktime_t comp_time = ktime_set(0, 0);
+	ktime_t decomp_time = ktime_set(0, 0);
+
 	/* map buffers to compress from */
-	lz4e_chunk_vect_map_srcs(chunk);
+	lz4e_chunk_vect_map_srcs(internal);
 
-	for (int i = 0; i < chunk->buf_cnt; ++i) {
-		struct lz4e_buffer *decomp_buf = &chunk->srcs[i];
-		struct lz4e_buffer *comp_buf = &chunk->dsts[i];
+	LZ4E_PR_INFO("vect: compressing %u bytes", internal->src_iter.bi_size);
 
-		LZ4E_PR_INFO("vect: compressing %u bytes",
-			     decomp_buf->data_size);
+	for (int i = 0; i < internal->buf_cnt; ++i) {
+		struct lz4e_buffer *decomp_buf = &internal->srcs[i];
+		struct lz4e_buffer *comp_buf = &internal->dsts[i];
+		ktime_t duration;
 
-		ret = compress(chunk->wrkmem, decomp_buf, comp_buf);
+		LZ4E_KTIME_WRAP(compress(internal->wrkmem, decomp_buf,
+					 comp_buf),
+				duration, ret);
 		if (!ret) {
 			LZ4E_PR_ERR("vect: compression failed: returned %d",
 				    ret);
@@ -175,18 +191,24 @@ static inline int lz4e_chunk_vect_run_comp_generic(
 			goto end;
 		}
 
-		LZ4E_PR_INFO("vect: compressed data: %u bytes", ret);
 		comp_buf->data_size = ret;
+		comp_size += ret;
+		comp_time = ktime_add(comp_time, duration);
 	}
 
+	LZ4E_PR_INFO("vect: compressed data: %u bytes", comp_size);
+
 	/* reset stream in case of streamed decompression */
-	LZ4_setStreamDecode(chunk->wrkmem, NULL, 0);
+	LZ4_setStreamDecode(internal->wrkmem, NULL, 0);
 
-	for (int i = 0; i < chunk->buf_cnt; ++i) {
-		struct lz4e_buffer *comp_buf = &chunk->dsts[i];
-		struct lz4e_buffer *decomp_buf = &chunk->srcs[i];
+	for (int i = 0; i < internal->buf_cnt; ++i) {
+		struct lz4e_buffer *comp_buf = &internal->dsts[i];
+		struct lz4e_buffer *decomp_buf = &internal->srcs[i];
+		ktime_t duration;
 
-		ret = decompress(chunk->wrkmem, comp_buf, decomp_buf);
+		LZ4E_KTIME_WRAP(decompress(internal->wrkmem, comp_buf,
+					   decomp_buf),
+				duration, ret);
 		if (ret < 0 || ret != decomp_buf->data_size) {
 			LZ4E_PR_ERR("vect: decompression failed: returned %d",
 				    ret);
@@ -194,14 +216,22 @@ static inline int lz4e_chunk_vect_run_comp_generic(
 			goto end;
 		}
 
-		LZ4E_PR_INFO("vect: decompressed data: %u bytes", ret);
+		decomp_size += ret;
+		decomp_time = ktime_add(decomp_time, duration);
 	}
+
+	LZ4E_PR_INFO("vect: decompressed data: %u bytes", decomp_size);
+
+	chunk->comp_size = comp_size;
+	chunk->decomp_size = decomp_size;
+	chunk->comp_time = comp_time;
+	chunk->decomp_time = decomp_time;
 
 	LZ4E_PR_DEBUG("vect: completed compression");
 	ret = 0;
 end:
 	/* finally unmap src buffers */
-	lz4e_chunk_vect_unmap_srcs(chunk);
+	lz4e_chunk_vect_unmap_srcs(internal);
 	return ret;
 }
 
@@ -210,38 +240,37 @@ end:
 
 /* ---------------- for compression on contiguous buffers ---------------- */
 
-static void lz4e_chunk_free_cont(void *chunk)
+static void lz4e_chunk_free_cont(void *chunk_ptr)
 {
-	struct lz4e_chunk_cont *internal = (struct lz4e_chunk_cont *)chunk;
-
-	if (!chunk)
-		return;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_cont *internal = chunk->internal;
 
 	kfree(internal->src.data);
 	kfree(internal->dst.data);
 	kfree(internal->wrkmem);
 
 	kfree(internal);
+	kfree(chunk);
 
 	LZ4E_PR_DEBUG("cont: released chunk");
 }
 
 static struct lz4e_chunk_cont *
-lz4e_chunk_alloc_cont(struct bio *original_bio,
-		      struct lz4e_under_dev *under_dev, gfp_t gfp_mask)
+lz4e_chunk_alloc_cont(struct bio *orig_bio, struct lz4e_under_dev *under_dev,
+		      gfp_t gfp_mask)
 {
-	struct lz4e_chunk_cont *chunk;
+	struct lz4e_chunk_cont *internal;
 	char *src_buf;
 	char *dst_buf;
 	void *wrkmem;
 
-	unsigned int src_size = original_bio->bi_iter.bi_size;
+	unsigned int src_size = orig_bio->bi_iter.bi_size;
 	unsigned int dst_size = LZ4_COMPRESSBOUND(src_size);
 
-	chunk = kzalloc(sizeof(*chunk), gfp_mask);
-	if (!chunk) {
+	internal = kzalloc(sizeof(*internal), gfp_mask);
+	if (!internal) {
 		LZ4E_PR_ERR("cont: failed to allocate chunk struct: %zu bytes",
-			    sizeof(*chunk));
+			    sizeof(*internal));
 		goto error;
 	}
 
@@ -249,7 +278,7 @@ lz4e_chunk_alloc_cont(struct bio *original_bio,
 	if (!src_buf) {
 		LZ4E_PR_ERR("cont: failed to allocate src buffer: %u bytes",
 			    src_size);
-		goto free_chunk;
+		goto free_internal;
 	}
 
 	dst_buf = kzalloc(dst_size, gfp_mask);
@@ -266,32 +295,33 @@ lz4e_chunk_alloc_cont(struct bio *original_bio,
 		goto free_dst;
 	}
 
-	chunk->src.data = src_buf;
-	chunk->src.buf_size = src_size;
-	chunk->src.data_size = src_size;
+	internal->src.data = src_buf;
+	internal->src.buf_size = src_size;
+	internal->src.data_size = src_size;
 
-	chunk->dst.data = dst_buf;
-	chunk->dst.buf_size = dst_size;
+	internal->dst.data = dst_buf;
+	internal->dst.buf_size = dst_size;
 
-	chunk->wrkmem = wrkmem;
+	internal->wrkmem = wrkmem;
 
 	LZ4E_PR_DEBUG("cont: allocated chunk");
-	return chunk;
+	return internal;
 
 free_dst:
 	kfree(dst_buf);
 free_src:
 	kfree(src_buf);
-free_chunk:
-	kfree(chunk);
+free_internal:
+	kfree(internal);
 error:
 	return NULL;
 }
 
-static int lz4e_chunk_init_cont(void *chunk, struct bio *src_bio,
+static int lz4e_chunk_init_cont(void *chunk_ptr, struct bio *src_bio,
 				lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_cont *internal = (struct lz4e_chunk_cont *)chunk;
+	struct lz4e_chunk_cont *internal =
+		((lz4e_chunk_t *)chunk_ptr)->internal;
 	int ret;
 
 	switch (data_dir) {
@@ -311,10 +341,11 @@ static int lz4e_chunk_init_cont(void *chunk, struct bio *src_bio,
 	return 0;
 }
 
-static int lz4e_chunk_end_cont(void *chunk, struct bio *dst_bio,
+static int lz4e_chunk_end_cont(void *chunk_ptr, struct bio *dst_bio,
 			       lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_cont *internal = (struct lz4e_chunk_cont *)chunk;
+	struct lz4e_chunk_cont *internal =
+		((lz4e_chunk_t *)chunk_ptr)->internal;
 	int ret;
 
 	switch (data_dir) {
@@ -348,31 +379,46 @@ static inline int lz4e_decompress_cont(void *wrkmem, struct lz4e_buffer *src,
 				   (int)dst->buf_size);
 }
 
-static int lz4e_chunk_run_comp_cont(void *chunk)
+static int lz4e_chunk_run_comp_cont(void *chunk_ptr)
 {
-	struct lz4e_chunk_cont *internal = (struct lz4e_chunk_cont *)chunk;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_cont *internal = chunk->internal;
 	int ret;
+
+	unsigned int comp_size;
+	unsigned int decomp_size;
+	ktime_t comp_time;
+	ktime_t decomp_time;
 
 	LZ4E_PR_INFO("cont: compressing %u bytes", internal->src.data_size);
 
-	ret = lz4e_compress_cont(internal->wrkmem, &internal->src,
-				 &internal->dst);
+	LZ4E_KTIME_WRAP(lz4e_compress_cont(internal->wrkmem, &internal->src,
+					   &internal->dst),
+			comp_time, ret);
 	if (!ret) {
 		LZ4E_PR_ERR("cont: compression failed: returned %d", ret);
 		return -EIO;
 	}
 
-	LZ4E_PR_INFO("cont: compressed data: %u", ret);
-	internal->dst.data_size = ret;
+	comp_size = ret;
+	internal->dst.data_size = comp_size;
+	LZ4E_PR_INFO("cont: compressed data: %u", comp_size);
 
-	ret = lz4e_decompress_cont(internal->wrkmem, &internal->dst,
-				   &internal->src);
+	LZ4E_KTIME_WRAP(lz4e_decompress_cont(internal->wrkmem, &internal->dst,
+					     &internal->src),
+			decomp_time, ret);
 	if (ret < 0 || ret != internal->src.data_size) {
 		LZ4E_PR_ERR("cont: decompression failed: returned %d", ret);
 		return -EIO;
 	}
 
-	LZ4E_PR_INFO("cont: decompressed data: %u", ret);
+	decomp_size = ret;
+	LZ4E_PR_INFO("cont: decompressed data: %u", decomp_size);
+
+	chunk->comp_size = comp_size;
+	chunk->decomp_size = decomp_size;
+	chunk->comp_time = comp_time;
+	chunk->decomp_time = decomp_time;
 
 	LZ4E_PR_DEBUG("cont: completed compression");
 	return 0;
@@ -380,12 +426,10 @@ static int lz4e_chunk_run_comp_cont(void *chunk)
 
 /* ---------------------- for vectored compression ----------------------- */
 
-static void lz4e_chunk_free_vect(void *chunk)
+static void lz4e_chunk_free_vect(void *chunk_ptr)
 {
-	struct lz4e_chunk_vect *internal = (struct lz4e_chunk_vect *)chunk;
-
-	if (!chunk)
-		return;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_vect *internal = chunk->internal;
 
 	/* free dst buffers */
 	for (int i = 0; i < internal->buf_cnt; ++i)
@@ -396,26 +440,27 @@ static void lz4e_chunk_free_vect(void *chunk)
 	kfree(internal->wrkmem);
 
 	kfree(internal);
+	kfree(chunk);
 
 	LZ4E_PR_DEBUG("vect: released chunk");
 }
 
 static struct lz4e_chunk_vect *
-lz4e_chunk_alloc_vect(struct bio *original_bio,
-		      struct lz4e_under_dev *under_dev, gfp_t gfp_mask)
+lz4e_chunk_alloc_vect(struct bio *orig_bio, struct lz4e_under_dev *under_dev,
+		      gfp_t gfp_mask)
 {
-	struct lz4e_chunk_vect *chunk;
+	struct lz4e_chunk_vect *internal;
 	struct lz4e_buffer *srcs;
 	struct lz4e_buffer *dsts;
 	void *wrkmem;
 	int ibuf;
 
-	unsigned int buf_cnt = bio_segments(original_bio);
+	unsigned int buf_cnt = bio_segments(orig_bio);
 
-	chunk = kzalloc(sizeof(*chunk), gfp_mask);
-	if (!chunk) {
+	internal = kzalloc(sizeof(*internal), gfp_mask);
+	if (!internal) {
 		LZ4E_PR_ERR("vect: failed to allocate chunk struct: %zu bytes",
-			    sizeof(*chunk));
+			    sizeof(*internal));
 		goto error;
 	}
 
@@ -423,7 +468,7 @@ lz4e_chunk_alloc_vect(struct bio *original_bio,
 	if (!srcs) {
 		LZ4E_PR_ERR("vect: failed to allocate srcs vector: %zu bytes",
 			    LZ4E_MEM_VECT(buf_cnt));
-		goto free_chunk;
+		goto free_internal;
 	}
 
 	dsts = kzalloc(LZ4E_MEM_VECT(buf_cnt), gfp_mask);
@@ -440,10 +485,10 @@ lz4e_chunk_alloc_vect(struct bio *original_bio,
 		goto free_dsts;
 	}
 
-	chunk->buf_cnt = buf_cnt;
-	chunk->srcs = srcs;
-	chunk->dsts = dsts;
-	chunk->wrkmem = wrkmem;
+	internal->buf_cnt = buf_cnt;
+	internal->srcs = srcs;
+	internal->dsts = dsts;
+	internal->wrkmem = wrkmem;
 
 	/* allocate dst buffers */
 	{
@@ -451,7 +496,7 @@ lz4e_chunk_alloc_vect(struct bio *original_bio,
 		struct bvec_iter iter;
 
 		ibuf = 0;
-		bio_for_each_segment (bvec, original_bio, iter) {
+		bio_for_each_segment (bvec, orig_bio, iter) {
 			size_t src_size = bvec.bv_len;
 			size_t dst_size = LZ4_COMPRESSBOUND(src_size);
 			char *dst_data;
@@ -464,47 +509,51 @@ lz4e_chunk_alloc_vect(struct bio *original_bio,
 				goto free_dst_bufs;
 			}
 
-			chunk->srcs[ibuf].buf_size = src_size;
-			chunk->srcs[ibuf].data_size = src_size;
-			chunk->dsts[ibuf].data = dst_data;
-			chunk->dsts[ibuf].buf_size = dst_size;
+			internal->srcs[ibuf].buf_size = src_size;
+			internal->srcs[ibuf].data_size = src_size;
+			internal->dsts[ibuf].data = dst_data;
+			internal->dsts[ibuf].buf_size = dst_size;
 
 			ibuf++;
 		}
 	}
 
 	LZ4E_PR_DEBUG("vect: allocated chunk");
-	return chunk;
+	return internal;
 
 free_dst_bufs:
 	for (ibuf--; ibuf >= 0; --ibuf)
-		kfree(chunk->dsts[ibuf].data);
+		kfree(internal->dsts[ibuf].data);
 	kfree(wrkmem);
 free_dsts:
 	kfree(dsts);
 free_srcs:
 	kfree(srcs);
-free_chunk:
-	kfree(chunk);
+free_internal:
+	kfree(internal);
 error:
 	return NULL;
 }
 
-static int lz4e_chunk_init_vect(void *chunk, struct bio *src_bio,
+static int lz4e_chunk_init_vect(void *chunk_ptr, struct bio *src_bio,
 				lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_vect *internal = (struct lz4e_chunk_vect *)chunk;
+	struct lz4e_chunk_vect *internal =
+		((lz4e_chunk_t *)chunk_ptr)->internal;
 
 	internal->src_bio = src_bio;
+	/* save initial iter in case of read */
+	internal->src_iter = src_bio->bi_iter;
 
 	LZ4E_PR_DEBUG("vect: initialized chunk");
 	return 0;
 }
 
-static int lz4e_chunk_end_vect(void *chunk, struct bio *dst_bio,
+static int lz4e_chunk_end_vect(void *chunk_ptr, struct bio *dst_bio,
 			       lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_vect *internal = (struct lz4e_chunk_vect *)chunk;
+	struct lz4e_chunk_vect *internal =
+		((lz4e_chunk_t *)chunk_ptr)->internal;
 
 	internal->src_bio = NULL;
 
@@ -512,9 +561,9 @@ static int lz4e_chunk_end_vect(void *chunk, struct bio *dst_bio,
 	return 0;
 }
 
-static int lz4e_chunk_run_comp_vect(void *chunk)
+static int lz4e_chunk_run_comp_vect(void *chunk_ptr)
 {
-	return lz4e_chunk_vect_run_comp_generic(chunk, lz4e_compress_cont,
+	return lz4e_chunk_vect_run_comp_generic(chunk_ptr, lz4e_compress_cont,
 						lz4e_decompress_cont);
 }
 
@@ -537,20 +586,18 @@ static inline int lz4e_decompress_strm(void *wrkmem, struct lz4e_buffer *src,
 					    (int)dst->buf_size);
 }
 
-static int lz4e_chunk_run_comp_strm(void *chunk)
+static int lz4e_chunk_run_comp_strm(void *chunk_ptr)
 {
-	return lz4e_chunk_vect_run_comp_generic(chunk, lz4e_compress_strm,
+	return lz4e_chunk_vect_run_comp_generic(chunk_ptr, lz4e_compress_strm,
 						lz4e_decompress_strm);
 }
 
 /* -------------- for compression on scatter-gather buffers -------------- */
 
-static void lz4e_chunk_free_extd(void *chunk)
+static void lz4e_chunk_free_extd(void *chunk_ptr)
 {
-	struct lz4e_chunk_extd *internal = (struct lz4e_chunk_extd *)chunk;
-
-	if (!chunk)
-		return;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_extd *internal = chunk->internal;
 
 	bio_put(internal->dst_bio);
 
@@ -559,29 +606,30 @@ static void lz4e_chunk_free_extd(void *chunk)
 	kfree(internal->wrkmem);
 
 	kfree(internal);
+	kfree(chunk);
 
 	LZ4E_PR_DEBUG("extd: released chunk");
 }
 
 static struct lz4e_chunk_extd *
-lz4e_chunk_alloc_extd(struct bio *original_bio,
-		      struct lz4e_under_dev *under_dev, gfp_t gfp_mask)
+lz4e_chunk_alloc_extd(struct bio *orig_bio, struct lz4e_under_dev *under_dev,
+		      gfp_t gfp_mask)
 {
-	struct lz4e_chunk_extd *chunk;
+	struct lz4e_chunk_extd *internal;
 	char *src_data;
 	char *dst_data;
 	void *wrkmem;
 	struct bio *dst_bio;
 
-	unsigned int src_size = original_bio->bi_iter.bi_size;
+	unsigned int src_size = orig_bio->bi_iter.bi_size;
 	unsigned int dst_size = LZ4E_COMPRESSBOUND(src_size);
 	unsigned int npages = (dst_size >> PAGE_SHIFT) + 1;
 	unsigned short nvecs = min_t(unsigned int, npages, BIO_MAX_VECS);
 
-	chunk = kzalloc(sizeof(*chunk), gfp_mask);
-	if (!chunk) {
+	internal = kzalloc(sizeof(*internal), gfp_mask);
+	if (!internal) {
 		LZ4E_PR_ERR("extd: failed to allocate chunk struct: %zu bytes",
-			    sizeof(*chunk));
+			    sizeof(*internal));
 		goto error;
 	}
 
@@ -589,7 +637,7 @@ lz4e_chunk_alloc_extd(struct bio *original_bio,
 	if (!src_data) {
 		LZ4E_PR_ERR("extd: failed to allocate src buffer: %u bytes",
 			    src_size);
-		goto free_chunk;
+		goto free_internal;
 	}
 
 	dst_data = kzalloc(dst_size, gfp_mask);
@@ -606,25 +654,25 @@ lz4e_chunk_alloc_extd(struct bio *original_bio,
 		goto free_dst_data;
 	}
 
-	dst_bio = bio_alloc_bioset(under_dev->bdev, nvecs, original_bio->bi_opf,
+	dst_bio = bio_alloc_bioset(under_dev->bdev, nvecs, orig_bio->bi_opf,
 				   gfp_mask, under_dev->bset);
 	if (!dst_bio) {
 		LZ4E_PR_ERR("failed to allocate dst bio");
 		goto free_wrkmem;
 	}
 
-	chunk->src_buf.data = src_data;
-	chunk->src_buf.buf_size = src_size;
-	chunk->src_buf.data_size = src_size;
+	internal->src_buf.data = src_data;
+	internal->src_buf.buf_size = src_size;
+	internal->src_buf.data_size = src_size;
 
-	chunk->dst_buf.data = dst_data;
-	chunk->dst_buf.buf_size = dst_size;
-	chunk->dst_bio = dst_bio;
+	internal->dst_buf.data = dst_data;
+	internal->dst_buf.buf_size = dst_size;
+	internal->dst_bio = dst_bio;
 
-	chunk->wrkmem = wrkmem;
+	internal->wrkmem = wrkmem;
 
 	LZ4E_PR_DEBUG("extd: allocated chunk");
-	return chunk;
+	return internal;
 
 free_wrkmem:
 	kfree(wrkmem);
@@ -632,19 +680,22 @@ free_dst_data:
 	kfree(dst_data);
 free_src_data:
 	kfree(src_data);
-free_chunk:
-	kfree(chunk);
+free_internal:
+	kfree(internal);
 error:
 	return NULL;
 }
 
-static int lz4e_chunk_init_extd(void *chunk, struct bio *src_bio,
+static int lz4e_chunk_init_extd(void *chunk_ptr, struct bio *src_bio,
 				lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_extd *internal = (struct lz4e_chunk_extd *)chunk;
+	struct lz4e_chunk_extd *internal =
+		((lz4e_chunk_t *)chunk_ptr)->internal;
 	int ret;
 
 	internal->src_bio = src_bio;
+	/* save initial iter in case of read */
+	internal->src_iter = src_bio->bi_iter;
 
 	ret = lz4e_buf_add_to_bio(internal->dst_bio, &internal->dst_buf);
 	if (ret) {
@@ -656,10 +707,11 @@ static int lz4e_chunk_init_extd(void *chunk, struct bio *src_bio,
 	return 0;
 }
 
-static int lz4e_chunk_end_extd(void *chunk, struct bio *dst_bio,
+static int lz4e_chunk_end_extd(void *chunk_ptr, struct bio *dst_bio,
 			       lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_extd *internal = (struct lz4e_chunk_extd *)chunk;
+	struct lz4e_chunk_extd *internal =
+		((lz4e_chunk_t *)chunk_ptr)->internal;
 
 	lz4e_buf_copy_to_bio(dst_bio, &internal->src_buf);
 
@@ -667,37 +719,54 @@ static int lz4e_chunk_end_extd(void *chunk, struct bio *dst_bio,
 	return 0;
 }
 
-static int lz4e_chunk_run_comp_extd(void *chunk)
+static int lz4e_chunk_run_comp_extd(void *chunk_ptr)
 {
-	struct lz4e_chunk_extd *internal = (struct lz4e_chunk_extd *)chunk;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_extd *internal = chunk->internal;
 	struct bvec_iter src_iter;
 	struct bvec_iter dst_iter;
 	int ret;
 
-	src_iter = internal->src_bio->bi_iter;
+	unsigned int comp_size;
+	unsigned int decomp_size;
+	ktime_t comp_time;
+	ktime_t decomp_time;
+
+	src_iter = internal->src_iter;
 	dst_iter = internal->dst_bio->bi_iter;
 
 	LZ4E_PR_INFO("extd: compressing %u bytes", src_iter.bi_size);
 
-	ret = LZ4E_compress_default(internal->src_bio->bi_io_vec,
-				    internal->dst_bio->bi_io_vec, &src_iter,
-				    &dst_iter, internal->wrkmem);
+	LZ4E_KTIME_WRAP(LZ4E_compress_default(internal->src_bio->bi_io_vec,
+					      internal->dst_bio->bi_io_vec,
+					      &src_iter, &dst_iter,
+					      internal->wrkmem),
+			comp_time, ret);
 	if (!ret) {
 		LZ4E_PR_ERR("extd: compression failed: returned %d", ret);
 		return -EIO;
 	}
 
-	LZ4E_PR_INFO("extd: compressed data: %u bytes", ret);
-	internal->dst_buf.data_size = ret;
+	comp_size = ret;
+	internal->dst_buf.data_size = comp_size;
+	LZ4E_PR_INFO("extd: compressed data: %u bytes", comp_size);
 
-	ret = lz4e_decompress_cont(internal->wrkmem, &internal->dst_buf,
-				   &internal->src_buf);
+	LZ4E_KTIME_WRAP(lz4e_decompress_cont(internal->wrkmem,
+					     &internal->dst_buf,
+					     &internal->src_buf),
+			decomp_time, ret);
 	if (ret < 0 || ret != internal->src_buf.data_size) {
 		LZ4E_PR_ERR("extd: decompression failed: returned %d", ret);
 		return -EIO;
 	}
 
-	LZ4E_PR_INFO("extd: decompressed data: %u bytes", ret);
+	decomp_size = ret;
+	LZ4E_PR_INFO("extd: decompressed data: %u bytes", decomp_size);
+
+	chunk->comp_size = comp_size;
+	chunk->decomp_size = decomp_size;
+	chunk->comp_time = comp_time;
+	chunk->decomp_time = decomp_time;
 
 	LZ4E_PR_DEBUG("extd: completed compression");
 	return 0;
@@ -708,35 +777,35 @@ static int lz4e_chunk_run_comp_extd(void *chunk)
 
 /* -------------------- generic chunk -------------------- */
 
-static struct lz4e_chunk_operations lz4e_chunk_cont_ops = {
+static const struct lz4e_chunk_operations lz4e_chunk_cont_ops = {
 	.init = lz4e_chunk_init_cont,
 	.run_comp = lz4e_chunk_run_comp_cont,
 	.end = lz4e_chunk_end_cont,
 	.free = lz4e_chunk_free_cont,
 };
 
-static struct lz4e_chunk_operations lz4e_chunk_vect_ops = {
+static const struct lz4e_chunk_operations lz4e_chunk_vect_ops = {
 	.init = lz4e_chunk_init_vect,
 	.run_comp = lz4e_chunk_run_comp_vect,
 	.end = lz4e_chunk_end_vect,
 	.free = lz4e_chunk_free_vect,
 };
 
-static struct lz4e_chunk_operations lz4e_chunk_strm_ops = {
+static const struct lz4e_chunk_operations lz4e_chunk_strm_ops = {
 	.init = lz4e_chunk_init_vect,
 	.run_comp = lz4e_chunk_run_comp_strm,
 	.end = lz4e_chunk_end_vect,
 	.free = lz4e_chunk_free_vect,
 };
 
-static struct lz4e_chunk_operations lz4e_chunk_extd_ops = {
+static const struct lz4e_chunk_operations lz4e_chunk_extd_ops = {
 	.init = lz4e_chunk_init_extd,
 	.run_comp = lz4e_chunk_run_comp_extd,
 	.end = lz4e_chunk_end_extd,
 	.free = lz4e_chunk_free_extd,
 };
 
-lz4e_chunk_t *lz4e_chunk_alloc(struct bio *original_bio,
+lz4e_chunk_t *lz4e_chunk_alloc(struct bio *orig_bio,
 			       struct lz4e_under_dev *under_dev, gfp_t gfp_mask,
 			       lz4e_comp_t comp_type)
 {
@@ -752,30 +821,33 @@ lz4e_chunk_t *lz4e_chunk_alloc(struct bio *original_bio,
 	switch (comp_type) {
 	case LZ4E_COMP_CONT:
 		chunk->ops = &lz4e_chunk_cont_ops;
-		chunk->internal = lz4e_chunk_alloc_cont(original_bio, under_dev,
-							gfp_mask);
+		chunk->internal =
+			lz4e_chunk_alloc_cont(orig_bio, under_dev, gfp_mask);
 		break;
 	case LZ4E_COMP_VECT:
 		chunk->ops = &lz4e_chunk_vect_ops;
-		chunk->internal = lz4e_chunk_alloc_vect(original_bio, under_dev,
-							gfp_mask);
+		chunk->internal =
+			lz4e_chunk_alloc_vect(orig_bio, under_dev, gfp_mask);
 		break;
 	case LZ4E_COMP_STRM:
 		chunk->ops = &lz4e_chunk_strm_ops;
-		chunk->internal = lz4e_chunk_alloc_vect(original_bio, under_dev,
-							gfp_mask);
+		chunk->internal =
+			lz4e_chunk_alloc_vect(orig_bio, under_dev, gfp_mask);
 		break;
 	case LZ4E_COMP_EXTD:
 		chunk->ops = &lz4e_chunk_extd_ops;
-		chunk->internal = lz4e_chunk_alloc_extd(original_bio, under_dev,
-							gfp_mask);
+		chunk->internal =
+			lz4e_chunk_alloc_extd(orig_bio, under_dev, gfp_mask);
 		break;
 	}
 
 	if (!chunk->internal) {
-		LZ4E_PR_ERR("failed to allocate chunk");
+		LZ4E_PR_ERR("failed to allocate internal chunk");
 		goto free_chunk;
 	}
+
+	LZ4E_PR_DEBUG("allocated chunk");
+	return chunk;
 
 free_chunk:
 	kfree(chunk);
@@ -786,18 +858,24 @@ error:
 inline int lz4e_chunk_init(lz4e_chunk_t *chunk, struct bio *src_bio,
 			   lz4e_dir_t data_dir)
 {
-	return chunk->ops->init(chunk->internal, src_bio, data_dir);
+	return chunk->ops->init(chunk, src_bio, data_dir);
 }
 
 inline int lz4e_chunk_run_comp(lz4e_chunk_t *chunk)
 {
-	return chunk->ops->run_comp(chunk->internal);
+	int ret;
+
+	preempt_disable();
+	ret = chunk->ops->run_comp(chunk);
+	preempt_enable();
+
+	return ret;
 }
 
 inline int lz4e_chunk_end(lz4e_chunk_t *chunk, struct bio *dst_bio,
 			  lz4e_dir_t data_dir)
 {
-	return chunk->ops->end(chunk->internal, dst_bio, data_dir);
+	return chunk->ops->end(chunk, dst_bio, data_dir);
 }
 
 inline void lz4e_chunk_free(lz4e_chunk_t *chunk)
@@ -805,6 +883,19 @@ inline void lz4e_chunk_free(lz4e_chunk_t *chunk)
 	if (!chunk)
 		return;
 
-	chunk->ops->free(chunk->internal);
-	kfree(chunk);
+	chunk->ops->free(chunk);
+}
+
+inline ktime_t lz4e_chunk_start_timer(lz4e_chunk_t *chunk)
+{
+	chunk->total_time = ktime_get();
+	return chunk->total_time;
+}
+
+inline ktime_t lz4e_chunk_stop_timer(lz4e_chunk_t *chunk)
+{
+	ktime_t end_time = ktime_get();
+	ktime_t start_time = chunk->total_time;
+	chunk->total_time = ktime_sub(end_time, start_time);
+	return chunk->total_time;
 }

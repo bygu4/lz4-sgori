@@ -11,7 +11,7 @@
 #include "lz4e_dev.h"
 #include "lz4e_static.h"
 
-// Struct representing the block device module
+/* struct representing the block device module */
 struct lz4e_module {
 	int major;
 	struct lz4e_dev *lzdev;
