@@ -13,9 +13,11 @@
 #include <linux/nodemask_types.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
+#include <linux/types.h>
 
 #include "include/lz4e_dev.h"
 
+#include "include/lz4e_chunk.h"
 #include "include/lz4e_req.h"
 #include "include/lz4e_static.h"
 #include "include/lz4e_stats.h"
@@ -34,7 +36,7 @@ static void lz4e_gendisk_free(struct gendisk *disk)
 	del_gendisk(disk);
 	put_disk(disk);
 
-	LZ4E_PR_DEBUG("released generic disk context");
+	LZ4E_PR_DEBUG("released disk");
 }
 
 static struct gendisk *lz4e_gendisk_alloc(void)
@@ -43,11 +45,11 @@ static struct gendisk *lz4e_gendisk_alloc(void)
 
 	disk = blk_alloc_disk(NULL, NUMA_NO_NODE);
 	if (!disk) {
-		LZ4E_PR_ERR("failed to allocate generic disk context");
+		LZ4E_PR_ERR("failed to allocate disk");
 		return NULL;
 	}
 
-	LZ4E_PR_DEBUG("allocated generic disk context");
+	LZ4E_PR_DEBUG("allocated disk");
 	return disk;
 }
 
@@ -62,7 +64,7 @@ static int lz4e_gendisk_add(struct gendisk *disk, struct lz4e_dev *lzdev,
 	disk->fops = &lz4e_disk_ops;
 	disk->private_data = lzdev;
 
-	// Do not support multiple minors, disable partition support
+	/* do not support multiple minors, disable partition support */
 	disk->flags |= GENHD_FL_NO_PART;
 
 	set_capacity(disk, get_capacity(lzdev->under_dev->bdev->bd_disk));
@@ -70,17 +72,17 @@ static int lz4e_gendisk_add(struct gendisk *disk, struct lz4e_dev *lzdev,
 	ret = snprintf(disk->disk_name, DISK_NAME_LEN, LZ4E_MODULE_NAME "%d",
 		       disk->first_minor);
 	if (ret < 0) {
-		LZ4E_PR_ERR("failed to write generic disk name");
+		LZ4E_PR_ERR("failed to write disk name");
 		return ret;
 	}
 
 	ret = add_disk(disk);
 	if (ret) {
-		LZ4E_PR_ERR("failed to add generic disk: %s", disk->disk_name);
+		LZ4E_PR_ERR("failed to add disk: %s", disk->disk_name);
 		return ret;
 	}
 
-	LZ4E_PR_INFO("initialized generic disk: %s", disk->disk_name);
+	LZ4E_PR_INFO("initialized disk: %s", disk->disk_name);
 	return 0;
 }
 
@@ -96,7 +98,7 @@ void lz4e_dev_free(struct lz4e_dev *lzdev)
 
 	kfree(lzdev);
 
-	LZ4E_PR_DEBUG("released block device context");
+	LZ4E_PR_DEBUG("released block device");
 }
 
 struct lz4e_dev *lz4e_dev_alloc(gfp_t gfp_mask)
@@ -109,7 +111,8 @@ struct lz4e_dev *lz4e_dev_alloc(gfp_t gfp_mask)
 
 	lzdev = kzalloc(sizeof(*lzdev), gfp_mask);
 	if (!lzdev) {
-		LZ4E_PR_ERR("failed to allocate dev struct");
+		LZ4E_PR_ERR("failed to allocate dev struct: %zu bytes",
+			    sizeof(*lzdev));
 		goto error;
 	}
 
@@ -121,7 +124,7 @@ struct lz4e_dev *lz4e_dev_alloc(gfp_t gfp_mask)
 
 	disk = lz4e_gendisk_alloc();
 	if (!disk) {
-		LZ4E_PR_ERR("failed to allocate gendisk");
+		LZ4E_PR_ERR("failed to allocate disk");
 		goto free_under_dev;
 	}
 
@@ -142,7 +145,7 @@ struct lz4e_dev *lz4e_dev_alloc(gfp_t gfp_mask)
 	lzdev->read_stats = read_stats;
 	lzdev->write_stats = write_stats;
 
-	LZ4E_PR_DEBUG("allocated block device context");
+	LZ4E_PR_DEBUG("allocated block device");
 	return lzdev;
 
 free_read_stats:
@@ -172,29 +175,31 @@ int lz4e_dev_init(struct lz4e_dev *lzdev, const char *dev_path, int major,
 
 	ret = lz4e_gendisk_add(disk, lzdev, major, first_minor);
 	if (ret) {
-		LZ4E_PR_ERR("failed to add generic disk");
+		LZ4E_PR_ERR("failed to add disk");
 		return ret;
 	}
+
+	lzdev->comp_type = LZ4E_COMP_DEFAULT;
 
 	LZ4E_PR_DEBUG("initialized block device");
 	return 0;
 }
 
-void lz4e_dev_submit_bio(struct bio *original_bio)
+void lz4e_dev_submit_bio(struct bio *orig_bio)
 {
-	struct lz4e_dev *lzdev = original_bio->bi_bdev->bd_disk->private_data;
+	struct lz4e_dev *lzdev = orig_bio->bi_bdev->bd_disk->private_data;
 	struct lz4e_req *lzreq;
 	blk_status_t status;
 
-	lzreq = lz4e_req_alloc(original_bio, lzdev->under_dev, GFP_NOIO,
+	lzreq = lz4e_req_alloc(orig_bio, lzdev->under_dev, GFP_NOIO,
 			       lzdev->comp_type);
 	if (!lzreq) {
-		LZ4E_PR_ERR("failed to allocate request context");
+		LZ4E_PR_ERR("failed to allocate request");
 		status = BLK_STS_RESOURCE;
 		goto submit_with_err;
 	}
 
-	status = lz4e_req_init(lzreq, original_bio, lzdev);
+	status = lz4e_req_init(lzreq, orig_bio, lzdev);
 	if (status != BLK_STS_OK) {
 		LZ4E_PR_ERR("failed to initialize request");
 		goto free_request;
@@ -208,6 +213,6 @@ void lz4e_dev_submit_bio(struct bio *original_bio)
 free_request:
 	lz4e_req_free(lzreq);
 submit_with_err:
-	original_bio->bi_status = status;
-	bio_endio(original_bio);
+	orig_bio->bi_status = status;
+	bio_endio(orig_bio);
 }

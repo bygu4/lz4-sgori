@@ -12,6 +12,7 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
+#include <linux/types.h>
 
 #include "include/lz4e_under_dev.h"
 
@@ -30,7 +31,7 @@ void lz4e_under_dev_free(struct lz4e_under_dev *under_dev)
 
 	kfree(under_dev);
 
-	LZ4E_PR_DEBUG("released underlying device context");
+	LZ4E_PR_DEBUG("released underlying device");
 }
 
 struct lz4e_under_dev *lz4e_under_dev_alloc(gfp_t gfp_mask)
@@ -40,19 +41,21 @@ struct lz4e_under_dev *lz4e_under_dev_alloc(gfp_t gfp_mask)
 
 	under_dev = kzalloc(sizeof(*under_dev), gfp_mask);
 	if (!under_dev) {
-		LZ4E_PR_ERR("failed to allocate underlying device context");
+		LZ4E_PR_ERR("failed to allocate underlying device: %zu bytes",
+			    sizeof(*under_dev));
 		goto error;
 	}
 
 	bset = kzalloc(sizeof(*bset), gfp_mask);
 	if (!bset) {
-		LZ4E_PR_ERR("failed to allocate bio set");
+		LZ4E_PR_ERR("failed to allocate bio set: %zu bytes",
+			    sizeof(*bset));
 		goto free_under_dev;
 	}
 
 	under_dev->bset = bset;
 
-	LZ4E_PR_DEBUG("allocated underlying device context");
+	LZ4E_PR_DEBUG("allocated underlying device");
 	return under_dev;
 
 free_under_dev:

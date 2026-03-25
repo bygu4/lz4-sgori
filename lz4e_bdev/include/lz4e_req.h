@@ -17,27 +17,27 @@
 #include "lz4e_stats.h"
 #include "lz4e_under_dev.h"
 
-// Struct representing request to the underlying device
+/* request to the underlying device */
 struct lz4e_req {
-	struct bio *original_bio;
+	struct bio *orig_bio;
 	struct bio *new_bio;
 	struct lz4e_stats *stats_to_update;
 	lz4e_chunk_t *chunk;
 } LZ4E_ALIGN_32;
 
-// Allocate request context
-struct lz4e_req *lz4e_req_alloc(struct bio *original_bio,
+/* allocate request */
+struct lz4e_req *lz4e_req_alloc(struct bio *orig_bio,
 				struct lz4e_under_dev *under_dev,
 				gfp_t gfp_mask, lz4e_comp_t comp_type);
 
-// Initialize request to device with given bio
-blk_status_t lz4e_req_init(struct lz4e_req *lzreq, struct bio *original_bio,
+/* initialize request to device with given bio */
+blk_status_t lz4e_req_init(struct lz4e_req *lzreq, struct bio *orig_bio,
 			   struct lz4e_dev *lzdev);
 
-// Submit request to underlying device
+/* submit request to underlying device */
 void lz4e_req_submit(struct lz4e_req *lzreq);
 
-// Free request context
+/* free request */
 void lz4e_req_free(struct lz4e_req *lzreq);
 
 #endif

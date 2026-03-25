@@ -16,11 +16,18 @@
 #include "lz4e_under_dev.h"
 
 typedef enum {
-	LZ4E_COMP_CONT, /* compression on contiguous buffer */
+	LZ4E_COMP_CONT, /* compression on contiguous buffers */
 	LZ4E_COMP_VECT, /* compression on each of bvecs */
 	LZ4E_COMP_STRM, /* streamed compression on bvecs */
 	LZ4E_COMP_EXTD, /* extended compression on scatter-gather buffers */
 } lz4e_comp_t;
+
+#define LZ4E_COMP_DEFAULT LZ4E_COMP_EXTD
+#define LZ4E_COMP_CONT_STR "cont"
+#define LZ4E_COMP_VECT_STR "vect"
+#define LZ4E_COMP_STRM_STR "strm"
+#define LZ4E_COMP_EXTD_STR "extd"
+#define LZ4E_COMP_STR_LEN 4
 
 typedef enum {
 	LZ4E_READ,
@@ -28,19 +35,26 @@ typedef enum {
 } lz4e_dir_t;
 
 struct lz4e_chunk_operations {
-	int (*init)(void *chunk, struct bio *src_bio, lz4e_dir_t data_dir);
-	int (*run_comp)(void *chunk);
-	int (*end)(void *chunk, struct bio *dst_bio, lz4e_dir_t data_dir);
-	void (*free)(void *chunk);
+	int (*init)(void *chunk_ptr, struct bio *src_bio, lz4e_dir_t data_dir);
+	int (*run_comp)(void *chunk_ptr);
+	int (*end)(void *chunk_ptr, struct bio *dst_bio, lz4e_dir_t data_dir);
+	void (*free)(void *chunk_ptr);
 } LZ4E_ALIGN_32;
 
 /* generic chunk for compression */
 typedef struct {
 	void *internal;
-	struct lz4e_chunk_operations *ops;
-} LZ4E_ALIGN_16 lz4e_chunk_t;
+	const struct lz4e_chunk_operations *ops;
 
-lz4e_chunk_t *lz4e_chunk_alloc(struct bio *original_bio,
+	ktime_t comp_time;
+	ktime_t decomp_time;
+	ktime_t total_time;
+
+	unsigned int comp_size;
+	unsigned int decomp_size;
+} LZ4E_ALIGN_64 lz4e_chunk_t;
+
+lz4e_chunk_t *lz4e_chunk_alloc(struct bio *orig_bio,
 			       struct lz4e_under_dev *under_dev, gfp_t gfp_mask,
 			       lz4e_comp_t comp_type);
 int lz4e_chunk_init(lz4e_chunk_t *chunk, struct bio *src_bio,
@@ -49,5 +63,8 @@ int lz4e_chunk_run_comp(lz4e_chunk_t *chunk);
 int lz4e_chunk_end(lz4e_chunk_t *chunk, struct bio *dst_bio,
 		   lz4e_dir_t data_dir);
 void lz4e_chunk_free(lz4e_chunk_t *chunk);
+
+ktime_t lz4e_chunk_start_timer(lz4e_chunk_t *chunk);
+ktime_t lz4e_chunk_stop_timer(lz4e_chunk_t *chunk);
 
 #endif
