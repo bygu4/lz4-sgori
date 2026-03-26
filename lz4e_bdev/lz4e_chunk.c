@@ -158,7 +158,7 @@ static inline void lz4e_chunk_vect_unmap_srcs(struct lz4e_chunk_vect *chunk)
 static inline int lz4e_chunk_vect_run_comp_generic(
 	void *chunk_ptr,
 	int (*compress)(void *wrkmem, struct lz4e_buffer *src,
-			struct lz4e_buffer *dst),
+			struct lz4e_buffer *dst, int acceleration),
 	int (*decompress)(void *wrkmem, struct lz4e_buffer *src,
 			  struct lz4e_buffer *dst))
 {
@@ -181,8 +181,8 @@ static inline int lz4e_chunk_vect_run_comp_generic(
 		struct lz4e_buffer *comp_buf = &internal->dsts[i];
 		ktime_t duration;
 
-		LZ4E_KTIME_WRAP(compress(internal->wrkmem, decomp_buf,
-					 comp_buf),
+		LZ4E_KTIME_WRAP(compress(internal->wrkmem, decomp_buf, comp_buf,
+					 chunk->acceleration),
 				duration, ret);
 		if (!ret) {
 			LZ4E_PR_ERR("vect: compression failed: returned %d",
@@ -366,10 +366,10 @@ static int lz4e_chunk_end_cont(void *chunk_ptr, struct bio *dst_bio,
 }
 
 static inline int lz4e_compress_cont(void *wrkmem, struct lz4e_buffer *src,
-				     struct lz4e_buffer *dst)
+				     struct lz4e_buffer *dst, int acceleration)
 {
-	return LZ4_compress_default(src->data, dst->data, (int)src->data_size,
-				    (int)dst->buf_size, wrkmem);
+	return LZ4_compress_fast(src->data, dst->data, (int)src->data_size,
+				 (int)dst->buf_size, acceleration, wrkmem);
 }
 
 static inline int lz4e_decompress_cont(void *wrkmem, struct lz4e_buffer *src,
@@ -393,7 +393,7 @@ static int lz4e_chunk_run_comp_cont(void *chunk_ptr)
 	LZ4E_PR_INFO("cont: compressing %u bytes", internal->src.data_size);
 
 	LZ4E_KTIME_WRAP(lz4e_compress_cont(internal->wrkmem, &internal->src,
-					   &internal->dst),
+					   &internal->dst, chunk->acceleration),
 			comp_time, ret);
 	if (!ret) {
 		LZ4E_PR_ERR("cont: compression failed: returned %d", ret);
@@ -570,12 +570,11 @@ static int lz4e_chunk_run_comp_vect(void *chunk_ptr)
 /* --------------- for vectored compression (using stream) --------------- */
 
 static inline int lz4e_compress_strm(void *wrkmem, struct lz4e_buffer *src,
-				     struct lz4e_buffer *dst)
+				     struct lz4e_buffer *dst, int acceleration)
 {
 	return LZ4_compress_fast_continue(wrkmem, src->data, dst->data,
 					  (int)src->data_size,
-					  (int)dst->buf_size,
-					  LZ4_ACCELERATION_DEFAULT);
+					  (int)dst->buf_size, acceleration);
 }
 
 static inline int lz4e_decompress_strm(void *wrkmem, struct lz4e_buffer *src,
@@ -737,10 +736,11 @@ static int lz4e_chunk_run_comp_extd(void *chunk_ptr)
 
 	LZ4E_PR_INFO("extd: compressing %u bytes", src_iter.bi_size);
 
-	LZ4E_KTIME_WRAP(LZ4E_compress_default(internal->src_bio->bi_io_vec,
-					      internal->dst_bio->bi_io_vec,
-					      &src_iter, &dst_iter,
-					      internal->wrkmem),
+	LZ4E_KTIME_WRAP(LZ4E_compress_fast(internal->src_bio->bi_io_vec,
+					   internal->dst_bio->bi_io_vec,
+					   &src_iter, &dst_iter,
+					   chunk->acceleration,
+					   internal->wrkmem),
 			comp_time, ret);
 	if (!ret) {
 		LZ4E_PR_ERR("extd: compression failed: returned %d", ret);
@@ -856,8 +856,9 @@ error:
 }
 
 inline int lz4e_chunk_init(lz4e_chunk_t *chunk, struct bio *src_bio,
-			   lz4e_dir_t data_dir)
+			   lz4e_dir_t data_dir, int acceleration)
 {
+	chunk->acceleration = acceleration;
 	return chunk->ops->init(chunk, src_bio, data_dir);
 }
 
