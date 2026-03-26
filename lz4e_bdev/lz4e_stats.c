@@ -50,8 +50,8 @@ void lz4e_stats_update(struct lz4e_stats *lzstats, struct bio *bio,
 		return;
 	}
 
-	atomic64_add((s64)chunk->comp_size, &lzstats->comp_bytes);
-	atomic64_add((s64)chunk->decomp_size, &lzstats->decomp_bytes);
+	atomic64_add((s64)chunk->comp_size, &lzstats->comp_size);
+	atomic64_add((s64)chunk->decomp_size, &lzstats->decomp_size);
 	atomic64_add((s64)bio_segments(bio), &lzstats->segments);
 
 	atomic64_add(ktime_to_ns(chunk->comp_time), &lzstats->comp_ns);

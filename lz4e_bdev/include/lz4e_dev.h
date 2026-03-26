@@ -21,9 +21,12 @@
 struct lz4e_dev {
 	struct gendisk *disk;
 	struct lz4e_under_dev *under_dev;
+
 	struct lz4e_stats *read_stats;
 	struct lz4e_stats *write_stats;
+
 	lz4e_comp_t comp_type;
+	int acceleration;
 } LZ4E_ALIGN_64;
 
 /* allocate block device */

@@ -20,9 +20,9 @@ struct lz4e_stats {
 	atomic64_t reqs_total;	/* how many reqs submitted */
 	atomic64_t reqs_failed; /* how many reqs failed */
 
-	atomic64_t segments;	 /* number of single-page segments */
-	atomic64_t comp_bytes;	 /* size of compressed data */
-	atomic64_t decomp_bytes; /* size of decompressed data */
+	atomic64_t segments;	/* number of single-page segments */
+	atomic64_t decomp_size; /* size of decompressed data */
+	atomic64_t comp_size;	/* size of compressed data */
 
 	atomic64_t comp_ns;   /* time for compression */
 	atomic64_t decomp_ns; /* time for decompression */
@@ -46,29 +46,29 @@ void lz4e_stats_free(struct lz4e_stats *lzstats);
 
 #define LZ4E_REQS_SUCCESS(total, failed) ((total) - (failed))
 
-#define LZ4E_AVG_BLOCK(decomp_bytes, total, failed)                    \
-	((LZ4E_REQS_SUCCESS(total, failed) != 0) ?                     \
-		 ((decomp_bytes) / LZ4E_REQS_SUCCESS(total, failed)) : \
+#define LZ4E_AVG_BLOCK(decomp_size, total, failed)                    \
+	((LZ4E_REQS_SUCCESS(total, failed) != 0) ?                    \
+		 ((decomp_size) / LZ4E_REQS_SUCCESS(total, failed)) : \
 		 0)
 
-#define LZ4E_AVG_SEGMENT(decomp_bytes, segments) \
-	(((segments) != 0) ? ((decomp_bytes) / (segments)) : 0)
+#define LZ4E_AVG_SEGMENT(decomp_size, segments) \
+	(((segments) != 0) ? ((decomp_size) / (segments)) : 0)
 
 /* throughput in bytes/millisecond ~ KB/second */
 
-#define LZ4E_COMP_BPMS(decomp_bytes, comp_ns)                \
-	((LZ4E_NS_TO_MS(comp_ns) != 0) ?                     \
-		 ((decomp_bytes) / LZ4E_NS_TO_MS(comp_ns)) : \
+#define LZ4E_COMP_BPMS(decomp_size, comp_ns)                \
+	((LZ4E_NS_TO_MS(comp_ns) != 0) ?                    \
+		 ((decomp_size) / LZ4E_NS_TO_MS(comp_ns)) : \
 		 0)
 
-#define LZ4E_DECOMP_BPMS(comp_bytes, decomp_ns)              \
-	((LZ4E_NS_TO_MS(decomp_ns) != 0) ?                   \
-		 ((comp_bytes) / LZ4E_NS_TO_MS(decomp_ns)) : \
+#define LZ4E_DECOMP_BPMS(comp_size, decomp_ns)              \
+	((LZ4E_NS_TO_MS(decomp_ns) != 0) ?                  \
+		 ((comp_size) / LZ4E_NS_TO_MS(decomp_ns)) : \
 		 0)
 
-#define LZ4E_TOTAL_BPMS(decomp_bytes, total_ns)               \
-	((LZ4E_NS_TO_MS(total_ns) != 0) ?                     \
-		 ((decomp_bytes) / LZ4E_NS_TO_MS(total_ns)) : \
+#define LZ4E_TOTAL_BPMS(decomp_size, total_ns)               \
+	((LZ4E_NS_TO_MS(total_ns) != 0) ?                    \
+		 ((decomp_size) / LZ4E_NS_TO_MS(total_ns)) : \
 		 0)
 
 /* format string for request statistics */
@@ -78,8 +78,8 @@ read:\n\
 	reqs_total: %llu\n\
 	reqs_failed: %llu\n\
 	segments: %llu\n\
-	comp_bytes: %llu\n\
-	decomp_bytes: %llu\n\
+	decomp_size: %llu\n\
+	comp_size: %llu\n\
 	avg_block: %llu\n\
 	avg_segment: %llu\n\
 	comp_bpms: %llu\n\
@@ -89,8 +89,8 @@ write:\n\
 	reqs_total: %llu\n\
 	reqs_failed: %llu\n\
 	segments: %llu\n\
-	comp_bytes: %llu\n\
-	decomp_bytes: %llu\n\
+	decomp_size: %llu\n\
+	comp_size: %llu\n\
 	avg_block: %llu\n\
 	avg_segment: %llu\n\
 	comp_bpms: %llu\n\

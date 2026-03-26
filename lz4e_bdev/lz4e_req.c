@@ -163,7 +163,8 @@ static blk_status_t lz4e_req_init_read(struct lz4e_req *lzreq,
 {
 	int ret;
 
-	ret = lz4e_chunk_init(lzreq->chunk, lzreq->new_bio, LZ4E_READ);
+	ret = lz4e_chunk_init(lzreq->chunk, lzreq->new_bio, LZ4E_READ,
+			      lzdev->acceleration);
 	if (ret) {
 		LZ4E_PR_ERR("read: failed to initialize chunk");
 		return BLK_STS_IOERR;
@@ -183,7 +184,8 @@ static blk_status_t lz4e_req_init_write(struct lz4e_req *lzreq,
 {
 	int ret;
 
-	ret = lz4e_chunk_init(lzreq->chunk, orig_bio, LZ4E_WRITE);
+	ret = lz4e_chunk_init(lzreq->chunk, orig_bio, LZ4E_WRITE,
+			      lzdev->acceleration);
 	if (ret) {
 		LZ4E_PR_ERR("write: failed to initialize chunk");
 		return BLK_STS_IOERR;

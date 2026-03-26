@@ -560,6 +560,15 @@ static int LZ4E_compress_fast_extState(
 	}
 }
 
+int LZ4E_compress_fast(const struct bio_vec *src, struct bio_vec *dst,
+	struct bvec_iter *srcIter, struct bvec_iter *dstIter,
+	int acceleration, void *wrkmem)
+{
+	return LZ4E_compress_fast_extState(wrkmem, src, dst, srcIter,
+		dstIter, acceleration);
+}
+EXPORT_SYMBOL(LZ4E_compress_fast);
+
 int LZ4E_compress_default(const struct bio_vec *src, struct bio_vec *dst,
 	struct bvec_iter *srcIter, struct bvec_iter *dstIter, void *wrkmem)
 {

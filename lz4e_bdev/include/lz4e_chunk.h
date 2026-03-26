@@ -52,13 +52,14 @@ typedef struct {
 
 	unsigned int comp_size;
 	unsigned int decomp_size;
+	int acceleration;
 } LZ4E_ALIGN_64 lz4e_chunk_t;
 
 lz4e_chunk_t *lz4e_chunk_alloc(struct bio *orig_bio,
 			       struct lz4e_under_dev *under_dev, gfp_t gfp_mask,
 			       lz4e_comp_t comp_type);
 int lz4e_chunk_init(lz4e_chunk_t *chunk, struct bio *src_bio,
-		    lz4e_dir_t data_dir);
+		    lz4e_dir_t data_dir, int acceleration);
 int lz4e_chunk_run_comp(lz4e_chunk_t *chunk);
 int lz4e_chunk_end(lz4e_chunk_t *chunk, struct bio *dst_bio,
 		   lz4e_dir_t data_dir);

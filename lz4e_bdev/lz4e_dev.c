@@ -17,6 +17,7 @@
 
 #include "include/lz4e_dev.h"
 
+#include "include/lz4e.h"
 #include "include/lz4e_chunk.h"
 #include "include/lz4e_req.h"
 #include "include/lz4e_static.h"
@@ -180,6 +181,7 @@ int lz4e_dev_init(struct lz4e_dev *lzdev, const char *dev_path, int major,
 	}
 
 	lzdev->comp_type = LZ4E_COMP_DEFAULT;
+	lzdev->acceleration = LZ4E_ACCELERATION_DEFAULT;
 
 	LZ4E_PR_DEBUG("initialized block device");
 	return 0;

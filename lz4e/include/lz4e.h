@@ -44,6 +44,10 @@ typedef union {
 	LZ4E_stream_t_internal internal_donotuse;
 } LZ4E_stream_t;
 
+int LZ4E_compress_fast(const struct bio_vec *src, struct bio_vec *dst,
+		struct bvec_iter *srcIter, struct bvec_iter *dstIter,
+		int acceleration, void *wrkmem);
+
 int LZ4E_compress_default(const struct bio_vec *src, struct bio_vec *dst,
 		struct bvec_iter *srcIter, struct bvec_iter *dstIter, void *wrkmem);
 
