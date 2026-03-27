@@ -26,11 +26,8 @@ typedef enum {
 #define LZ4E_COMP_TYPE_COUNT 4
 #define LZ4E_COMP_STR_LEN 4
 
-const lz4e_comp_t lz4e_comp_type[LZ4E_COMP_TYPE_COUNT] = {
-	LZ4E_COMP_CONT, LZ4E_COMP_VECT, LZ4E_COMP_STRM, LZ4E_COMP_EXTD
-};
-const char *lz4e_comp_str[LZ4E_COMP_TYPE_COUNT] = { "cont", "vect", "strm",
-						    "extd" };
+extern const lz4e_comp_t lz4e_comp_type[LZ4E_COMP_TYPE_COUNT];
+extern const char *lz4e_comp_str[LZ4E_COMP_TYPE_COUNT];
 
 typedef enum {
 	LZ4E_READ,
