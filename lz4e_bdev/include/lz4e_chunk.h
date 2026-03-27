@@ -49,6 +49,7 @@ typedef struct {
 	void *internal;
 	const struct lz4e_chunk_operations *ops;
 
+	ktime_t copy_time;
 	ktime_t comp_time;
 	ktime_t decomp_time;
 	ktime_t total_time;

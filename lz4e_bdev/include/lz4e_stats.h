@@ -24,10 +24,11 @@ struct lz4e_stats {
 	atomic64_t decomp_size; /* size of decompressed data */
 	atomic64_t comp_size;	/* size of compressed data */
 
+	atomic64_t copy_ns;   /* time for data copying */
 	atomic64_t comp_ns;   /* time for compression */
 	atomic64_t decomp_ns; /* time for decompression */
 	atomic64_t total_ns;  /* total elapsed time */
-} LZ4E_ALIGN_64;
+} LZ4E_ALIGN_128;
 
 /* allocate request statistics */
 struct lz4e_stats *lz4e_stats_alloc(gfp_t gfp_mask);
@@ -56,20 +57,20 @@ void lz4e_stats_free(struct lz4e_stats *lzstats);
 
 /* throughput in bytes/millisecond ~ KB/second */
 
-#define LZ4E_COMP_BPMS(decomp_size, comp_ns)                \
-	((LZ4E_NS_TO_MS(comp_ns) != 0) ?                    \
-		 ((decomp_size) / LZ4E_NS_TO_MS(comp_ns)) : \
-		 0)
+#define LZ4E_BPMS(bytes, ns) \
+	((LZ4E_NS_TO_MS(ns) != 0) ? ((bytes) / LZ4E_NS_TO_MS(ns)) : 0)
 
-#define LZ4E_DECOMP_BPMS(comp_size, decomp_ns)              \
-	((LZ4E_NS_TO_MS(decomp_ns) != 0) ?                  \
-		 ((comp_size) / LZ4E_NS_TO_MS(decomp_ns)) : \
-		 0)
+#define LZ4E_COPY_BPMS(decomp_size, copy_ns) \
+	(LZ4E_BPMS((decomp_size), (copy_ns)))
 
-#define LZ4E_TOTAL_BPMS(decomp_size, total_ns)               \
-	((LZ4E_NS_TO_MS(total_ns) != 0) ?                    \
-		 ((decomp_size) / LZ4E_NS_TO_MS(total_ns)) : \
-		 0)
+#define LZ4E_COMP_BPMS(decomp_size, comp_ns) \
+	(LZ4E_BPMS((decomp_size), (comp_ns)))
+
+#define LZ4E_DECOMP_BPMS(comp_size, decomp_ns) \
+	(LZ4E_BPMS((comp_size), (decomp_ns)))
+
+#define LZ4E_TOTAL_BPMS(decomp_size, total_ns) \
+	(LZ4E_BPMS((decomp_size), (total_ns)))
 
 /* format string for request statistics */
 #define LZ4E_STATS_FORMAT \
@@ -82,6 +83,7 @@ read:\n\
 	comp_size: %llu\n\
 	avg_block: %llu\n\
 	avg_segment: %llu\n\
+	copy_bpms: %llu\n\
 	comp_bpms: %llu\n\
 	decomp_bpms: %llu\n\
 	total_bpms: %llu\n\
@@ -93,6 +95,7 @@ write:\n\
 	comp_size: %llu\n\
 	avg_block: %llu\n\
 	avg_segment: %llu\n\
+	copy_bpms: %llu\n\
 	comp_bpms: %llu\n\
 	decomp_bpms: %llu\n\
 	total_bpms: %llu\n\

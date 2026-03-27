@@ -54,6 +54,7 @@ void lz4e_stats_update(struct lz4e_stats *lzstats, struct bio *bio,
 	atomic64_add((s64)chunk->decomp_size, &lzstats->decomp_size);
 	atomic64_add((s64)bio_segments(bio), &lzstats->segments);
 
+	atomic64_add(ktime_to_ns(chunk->copy_time), &lzstats->copy_ns);
 	atomic64_add(ktime_to_ns(chunk->comp_time), &lzstats->comp_ns);
 	atomic64_add(ktime_to_ns(chunk->decomp_time), &lzstats->decomp_ns);
 	atomic64_add(ktime_to_ns(chunk->total_time), &lzstats->total_ns);
