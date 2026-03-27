@@ -34,7 +34,7 @@ struct lz4e_dev *lz4e_dev_alloc(gfp_t gfp_mask);
 
 /* initialize device to be managed by the driver */
 int lz4e_dev_init(struct lz4e_dev *lzdev, const char *dev_path, int major,
-		  int first_minor);
+		  int first_minor, lz4e_comp_t comp_type, int acceleration);
 
 /* free block device */
 void lz4e_dev_free(struct lz4e_dev *lzdev);

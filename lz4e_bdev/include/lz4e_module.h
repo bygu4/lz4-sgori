@@ -17,7 +17,9 @@
 struct lz4e_module {
 	int major;
 	struct lz4e_dev *lzdev;
-} LZ4E_ALIGN_16;
+	lz4e_comp_t comp_type;
+	int acceleration;
+} LZ4E_ALIGN_32;
 
 /* run setter callback if no device exists */
 static inline int lz4e_cb_w_if_no_dev(
@@ -61,22 +63,37 @@ static inline int lz4e_cb_r_if_dev(int (*func)(char *buf,
 	return func(buf, kpar);
 }
 
-#define LZ4E_CB_W_IF_NO_DEV(name, func, lzmod)                             \
-	static int(name)(const char *arg, const struct kernel_param *kpar) \
-	{                                                                  \
-		return lz4e_cb_w_if_no_dev((func), &(lzmod), arg, kpar);   \
+#define LZ4E_CB_W(name, func)                                    \
+	static inline int(name)(const char *arg,                 \
+				const struct kernel_param *kpar) \
+	{                                                        \
+		return func(arg, kpar);                          \
 	}
 
-#define LZ4E_CB_W_IF_DEV(name, func, lzmod)                                \
-	static int(name)(const char *arg, const struct kernel_param *kpar) \
-	{                                                                  \
-		return lz4e_cb_w_if_dev((func), &(lzmod), arg, kpar);      \
+#define LZ4E_CB_R(name, func)                                               \
+	static inline int(name)(char *buf, const struct kernel_param *kpar) \
+	{                                                                   \
+		return func(buf, kpar);                                     \
 	}
 
-#define LZ4E_CB_R_IF_DEV(name, func, lzmod)                           \
-	static int(name)(char *buf, const struct kernel_param *kpar)  \
+#define LZ4E_CB_W_IF_NO_DEV(name, func, lzmod)                           \
+	static inline int(name)(const char *arg,                         \
+				const struct kernel_param *kpar)         \
+	{                                                                \
+		return lz4e_cb_w_if_no_dev((func), &(lzmod), arg, kpar); \
+	}
+
+#define LZ4E_CB_W_IF_DEV(name, func, lzmod)                           \
+	static inline int(name)(const char *arg,                      \
+				const struct kernel_param *kpar)      \
 	{                                                             \
-		return lz4e_cb_r_if_dev((func), &(lzmod), buf, kpar); \
+		return lz4e_cb_w_if_dev((func), &(lzmod), arg, kpar); \
+	}
+
+#define LZ4E_CB_R_IF_DEV(name, func, lzmod)                                 \
+	static inline int(name)(char *buf, const struct kernel_param *kpar) \
+	{                                                                   \
+		return lz4e_cb_r_if_dev((func), &(lzmod), buf, kpar);       \
 	}
 
 #define LZ4E_PARAM_OPS(name, setter, getter)           \

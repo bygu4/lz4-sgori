@@ -18,18 +18,16 @@
 
 #include "include/lz4e_module.h"
 
+#include "include/lz4e.h"
 #include "include/lz4e_chunk.h"
 #include "include/lz4e_dev.h"
 #include "include/lz4e_static.h"
 #include "include/lz4e_stats.h"
 
-static struct lz4e_module lzmod = {};
-
-const lz4e_comp_t lz4e_comp_type[LZ4E_COMP_TYPE_COUNT] = {
-	LZ4E_COMP_CONT, LZ4E_COMP_VECT, LZ4E_COMP_STRM, LZ4E_COMP_EXTD
+static struct lz4e_module lzmod = {
+	.comp_type = LZ4E_COMP_DEFAULT,
+	.acceleration = LZ4E_ACCELERATION_DEFAULT,
 };
-const char *lz4e_comp_str[LZ4E_COMP_TYPE_COUNT] = { "cont", "vect", "strm",
-						    "extd" };
 
 // Callbacks can have unused parameters
 // NOLINTBEGIN(misc-unused-parameters)
@@ -47,7 +45,8 @@ static int lz4e_create_disk(const char *arg, const struct kernel_param *kpar)
 		return -ENOMEM;
 	}
 
-	ret = lz4e_dev_init(lzdev, arg, lzmod.major, LZ4E_FIRST_MINOR);
+	ret = lz4e_dev_init(lzdev, arg, lzmod.major, LZ4E_FIRST_MINOR,
+			    lzmod.comp_type, lzmod.acceleration);
 	if (ret) {
 		LZ4E_PR_ERR("failed to initialize block device");
 		goto free_device;
@@ -102,19 +101,22 @@ static int lz4e_set_comp_type(const char *arg, const struct kernel_param *kpar)
 		return -EINVAL;
 	}
 
-	lzmod.lzdev->comp_type = lz4e_comp_type[icomp];
+	lzmod.comp_type = lz4e_comp_type[icomp];
+
+	if (lzmod.lzdev)
+		lzmod.lzdev->comp_type = lz4e_comp_type[icomp];
 
 	LZ4E_PR_INFO("set compression type: %s", lz4e_comp_str[icomp]);
 	return 0;
 }
-LZ4E_CB_W_IF_DEV(lz4e_comp_type_w, lz4e_set_comp_type, lzmod);
+LZ4E_CB_W(lz4e_comp_type_w, lz4e_set_comp_type);
 
 static int lz4e_get_comp_type(char *buf, const struct kernel_param *kpar)
 {
 	int icomp = 0;
 
 	for (; (icomp < LZ4E_COMP_TYPE_COUNT) &&
-	       (lzmod.lzdev->comp_type != lz4e_comp_type[icomp]);
+	       (lzmod.comp_type != lz4e_comp_type[icomp]);
 	     ++icomp) {
 	}
 
@@ -125,7 +127,7 @@ static int lz4e_get_comp_type(char *buf, const struct kernel_param *kpar)
 
 	return sysfs_emit(buf, "%s", lz4e_comp_str[icomp]);
 }
-LZ4E_CB_R_IF_DEV(lz4e_comp_type_r, lz4e_get_comp_type, lzmod);
+LZ4E_CB_R(lz4e_comp_type_r, lz4e_get_comp_type);
 
 /* ----------------------- compression acceleration ----------------------- */
 
@@ -141,18 +143,21 @@ static int lz4e_set_acceleration(const char *arg,
 		return ret;
 	}
 
-	lzmod.lzdev->acceleration = acceleration;
+	lzmod.acceleration = acceleration;
+
+	if (lzmod.lzdev)
+		lzmod.lzdev->acceleration = acceleration;
 
 	LZ4E_PR_INFO("set acceleration: %d", acceleration);
 	return 0;
 }
-LZ4E_CB_W_IF_DEV(lz4e_acceleration_w, lz4e_set_acceleration, lzmod);
+LZ4E_CB_W(lz4e_acceleration_w, lz4e_set_acceleration);
 
 static int lz4e_get_acceleration(char *buf, const struct kernel_param *kpar)
 {
-	return sysfs_emit(buf, "%d", lzmod.lzdev->acceleration);
+	return sysfs_emit(buf, "%d", lzmod.acceleration);
 }
-LZ4E_CB_R_IF_DEV(lz4e_acceleration_r, lz4e_get_acceleration, lzmod);
+LZ4E_CB_R(lz4e_acceleration_r, lz4e_get_acceleration);
 
 /* ------------------------ request stats as whole ------------------------ */
 

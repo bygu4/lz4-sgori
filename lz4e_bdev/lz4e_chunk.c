@@ -25,6 +25,19 @@
 #include "include/lz4e_static.h"
 #include "include/lz4e_under_dev.h"
 
+const lz4e_comp_t lz4e_comp_type[LZ4E_COMP_TYPE_COUNT] = {
+	LZ4E_COMP_CONT,
+	LZ4E_COMP_VECT,
+	LZ4E_COMP_STRM,
+	LZ4E_COMP_EXTD,
+};
+const char lz4e_comp_str[LZ4E_COMP_TYPE_COUNT][LZ4E_COMP_STR_LEN] = {
+	"cont",
+	"vect",
+	"strm",
+	"extd",
+};
+
 /* -------------------- helpers -------------------- */
 
 static int lz4e_buf_copy_from_bio(struct lz4e_buffer *dst, struct bio *src)
