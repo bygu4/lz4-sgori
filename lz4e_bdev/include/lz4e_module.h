@@ -20,10 +20,10 @@ struct lz4e_module {
 } LZ4E_ALIGN_16;
 
 /* run setter callback if no device exists */
-inline int lz4e_cb_w_if_no_dev(int (*func)(const char *arg,
-					   const struct kernel_param *kpar),
-			       struct lz4e_module *lzmod, const char *arg,
-			       const struct kernel_param *kpar)
+static inline int lz4e_cb_w_if_no_dev(
+	int (*func)(const char *arg, const struct kernel_param *kpar),
+	struct lz4e_module *lzmod, const char *arg,
+	const struct kernel_param *kpar)
 {
 	if (lzmod->lzdev) {
 		LZ4E_PR_ERR("device exists");
@@ -34,10 +34,10 @@ inline int lz4e_cb_w_if_no_dev(int (*func)(const char *arg,
 }
 
 /* run setter callback if device exists */
-inline int lz4e_cb_w_if_dev(int (*func)(const char *arg,
-					const struct kernel_param *kpar),
-			    struct lz4e_module *lzmod, const char *arg,
-			    const struct kernel_param *kpar)
+static inline int lz4e_cb_w_if_dev(int (*func)(const char *arg,
+					       const struct kernel_param *kpar),
+				   struct lz4e_module *lzmod, const char *arg,
+				   const struct kernel_param *kpar)
 {
 	if (!lzmod->lzdev) {
 		LZ4E_PR_ERR("no device found");
@@ -48,10 +48,10 @@ inline int lz4e_cb_w_if_dev(int (*func)(const char *arg,
 }
 
 /* run getter callback if device exists */
-inline int lz4e_cb_r_if_dev(int (*func)(char *buf,
-					const struct kernel_param *kpar),
-			    struct lz4e_module *lzmod, char *buf,
-			    const struct kernel_param *kpar)
+static inline int lz4e_cb_r_if_dev(int (*func)(char *buf,
+					       const struct kernel_param *kpar),
+				   struct lz4e_module *lzmod, char *buf,
+				   const struct kernel_param *kpar)
 {
 	if (!lzmod->lzdev) {
 		LZ4E_PR_ERR("no device found");
