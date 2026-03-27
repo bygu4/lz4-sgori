@@ -17,7 +17,6 @@
 
 #include "include/lz4e_dev.h"
 
-#include "include/lz4e.h"
 #include "include/lz4e_chunk.h"
 #include "include/lz4e_req.h"
 #include "include/lz4e_static.h"
@@ -162,7 +161,7 @@ error:
 }
 
 int lz4e_dev_init(struct lz4e_dev *lzdev, const char *dev_path, int major,
-		  int first_minor)
+		  int first_minor, lz4e_comp_t comp_type, int acceleration)
 {
 	struct gendisk *disk = lzdev->disk;
 	struct lz4e_under_dev *under_dev = lzdev->under_dev;
@@ -180,8 +179,8 @@ int lz4e_dev_init(struct lz4e_dev *lzdev, const char *dev_path, int major,
 		return ret;
 	}
 
-	lzdev->comp_type = LZ4E_COMP_DEFAULT;
-	lzdev->acceleration = LZ4E_ACCELERATION_DEFAULT;
+	lzdev->comp_type = comp_type;
+	lzdev->acceleration = acceleration;
 
 	LZ4E_PR_DEBUG("initialized block device");
 	return 0;
