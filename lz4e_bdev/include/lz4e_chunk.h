@@ -23,11 +23,14 @@ typedef enum {
 } lz4e_comp_t;
 
 #define LZ4E_COMP_DEFAULT LZ4E_COMP_EXTD
-#define LZ4E_COMP_CONT_STR "cont"
-#define LZ4E_COMP_VECT_STR "vect"
-#define LZ4E_COMP_STRM_STR "strm"
-#define LZ4E_COMP_EXTD_STR "extd"
+#define LZ4E_COMP_TYPE_COUNT 4
 #define LZ4E_COMP_STR_LEN 4
+
+const lz4e_comp_t lz4e_comp_type[LZ4E_COMP_TYPE_COUNT] = {
+	LZ4E_COMP_CONT, LZ4E_COMP_VECT, LZ4E_COMP_STRM, LZ4E_COMP_EXTD
+};
+const char *lz4e_comp_str[LZ4E_COMP_TYPE_COUNT] = { "cont", "vect", "strm",
+						    "extd" };
 
 typedef enum {
 	LZ4E_READ,

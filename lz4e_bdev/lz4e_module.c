@@ -84,48 +84,40 @@ LZ4E_CB_R_IF_DEV(lz4e_unmapper_r, lz4e_get_disk_info, lzmod);
 
 static int lz4e_set_comp_type(const char *arg, const struct kernel_param *kpar)
 {
-	lz4e_comp_t comp_type;
-	char *comp_str;
+	int icomp = 0;
 
-	if (strncmp(arg, LZ4E_COMP_CONT_STR, LZ4E_COMP_STR_LEN) == 0) {
-		comp_type = LZ4E_COMP_CONT;
-		comp_str = LZ4E_COMP_CONT_STR;
-	} else if (strncmp(arg, LZ4E_COMP_VECT_STR, LZ4E_COMP_STR_LEN) == 0) {
-		comp_type = LZ4E_COMP_VECT;
-		comp_str = LZ4E_COMP_VECT_STR;
-	} else if (strncmp(arg, LZ4E_COMP_STRM_STR, LZ4E_COMP_STR_LEN) == 0) {
-		comp_type = LZ4E_COMP_STRM;
-		comp_str = LZ4E_COMP_STRM_STR;
-	} else if (strncmp(arg, LZ4E_COMP_EXTD_STR, LZ4E_COMP_STR_LEN) == 0) {
-		comp_type = LZ4E_COMP_EXTD;
-		comp_str = LZ4E_COMP_EXTD_STR;
-	} else {
+	for (; (icomp < LZ4E_COMP_TYPE_COUNT) &&
+	       (strncmp(arg, lz4e_comp_str[icomp], LZ4E_COMP_STR_LEN) != 0);
+	     ++icomp) {
+	}
+
+	if (icomp == LZ4E_COMP_TYPE_COUNT) {
 		LZ4E_PR_ERR("undefined compression type");
 		return -EINVAL;
 	}
 
-	lzmod.lzdev->comp_type = comp_type;
+	lzmod.lzdev->comp_type = lz4e_comp_type[icomp];
 
-	LZ4E_PR_INFO("set compression type: %s", comp_str);
+	LZ4E_PR_INFO("set compression type: %s", lz4e_comp_str[icomp]);
 	return 0;
 }
 LZ4E_CB_W_IF_DEV(lz4e_comp_type_w, lz4e_set_comp_type, lzmod);
 
 static int lz4e_get_comp_type(char *buf, const struct kernel_param *kpar)
 {
-	switch (lzmod.lzdev->comp_type) {
-	case LZ4E_COMP_CONT:
-		return sysfs_emit(buf, LZ4E_COMP_CONT_STR);
-	case LZ4E_COMP_VECT:
-		return sysfs_emit(buf, LZ4E_COMP_VECT_STR);
-	case LZ4E_COMP_STRM:
-		return sysfs_emit(buf, LZ4E_COMP_STRM_STR);
-	case LZ4E_COMP_EXTD:
-		return sysfs_emit(buf, LZ4E_COMP_EXTD_STR);
-	default:
+	int icomp = 0;
+
+	for (; (icomp < LZ4E_COMP_TYPE_COUNT) &&
+	       (lzmod.lzdev->comp_type != lz4e_comp_type[icomp]);
+	     ++icomp) {
+	}
+
+	if (icomp == LZ4E_COMP_TYPE_COUNT) {
 		LZ4E_PR_ERR("undefined compression type");
 		return -EAGAIN;
 	}
+
+	return sysfs_emit(buf, "%s", lz4e_comp_str[icomp]);
 }
 LZ4E_CB_R_IF_DEV(lz4e_comp_type_r, lz4e_get_comp_type, lzmod);
 
