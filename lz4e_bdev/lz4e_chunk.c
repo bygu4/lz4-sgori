@@ -27,7 +27,7 @@
 
 /* -------------------- helpers -------------------- */
 
-static void lz4e_buf_copy_from_bio(struct lz4e_buffer *dst, struct bio *src)
+static int lz4e_buf_copy_from_bio(struct lz4e_buffer *dst, struct bio *src)
 {
 	char *ptr = dst->data;
 	struct bio_vec bvec;
@@ -39,9 +39,10 @@ static void lz4e_buf_copy_from_bio(struct lz4e_buffer *dst, struct bio *src)
 	}
 
 	LZ4E_PR_DEBUG("copied from bio to buffer");
+	return 0;
 }
 
-static void lz4e_buf_copy_to_bio(struct bio *dst, struct lz4e_buffer *src)
+static int lz4e_buf_copy_to_bio(struct bio *dst, struct lz4e_buffer *src)
 {
 	char *ptr = src->data;
 	struct bio_vec bvec;
@@ -53,6 +54,7 @@ static void lz4e_buf_copy_to_bio(struct bio *dst, struct lz4e_buffer *src)
 	}
 
 	LZ4E_PR_DEBUG("copied from buffer to bio");
+	return 0;
 }
 
 static int lz4e_buf_add_to_bio(struct bio *bio, struct lz4e_buffer *buf)
@@ -320,8 +322,9 @@ error:
 static int lz4e_chunk_init_cont(void *chunk_ptr, struct bio *src_bio,
 				lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_cont *internal =
-		((lz4e_chunk_t *)chunk_ptr)->internal;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_cont *internal = chunk->internal;
+	ktime_t copy_time;
 	int ret;
 
 	switch (data_dir) {
@@ -331,11 +334,15 @@ static int lz4e_chunk_init_cont(void *chunk_ptr, struct bio *src_bio,
 			LZ4E_PR_ERR("cont: failed to add buffer to bio");
 			return ret;
 		}
+		copy_time = ktime_set(0, 0);
 		break;
 	case LZ4E_WRITE:
-		lz4e_buf_copy_from_bio(&internal->src, src_bio);
+		LZ4E_KTIME_WRAP(lz4e_buf_copy_from_bio(&internal->src, src_bio),
+				copy_time, ret);
 		break;
 	}
+
+	chunk->copy_time = copy_time;
 
 	LZ4E_PR_DEBUG("cont: initialized chunk");
 	return 0;
@@ -344,13 +351,15 @@ static int lz4e_chunk_init_cont(void *chunk_ptr, struct bio *src_bio,
 static int lz4e_chunk_end_cont(void *chunk_ptr, struct bio *dst_bio,
 			       lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_cont *internal =
-		((lz4e_chunk_t *)chunk_ptr)->internal;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_cont *internal = chunk->internal;
+	ktime_t copy_time;
 	int ret;
 
 	switch (data_dir) {
 	case LZ4E_READ:
-		lz4e_buf_copy_to_bio(dst_bio, &internal->src);
+		LZ4E_KTIME_WRAP(lz4e_buf_copy_to_bio(dst_bio, &internal->src),
+				copy_time, ret);
 		break;
 	case LZ4E_WRITE:
 		ret = lz4e_buf_add_to_bio(dst_bio, &internal->src);
@@ -358,8 +367,11 @@ static int lz4e_chunk_end_cont(void *chunk_ptr, struct bio *dst_bio,
 			LZ4E_PR_ERR("cont: failed to add buffer to bio");
 			return ret;
 		}
+		copy_time = ktime_set(0, 0);
 		break;
 	}
+
+	chunk->copy_time = ktime_add(chunk->copy_time, copy_time);
 
 	LZ4E_PR_DEBUG("cont: finished chunk");
 	return 0;
@@ -538,12 +550,14 @@ error:
 static int lz4e_chunk_init_vect(void *chunk_ptr, struct bio *src_bio,
 				lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_vect *internal =
-		((lz4e_chunk_t *)chunk_ptr)->internal;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_vect *internal = chunk->internal;
 
 	internal->src_bio = src_bio;
 	/* save initial iter in case of read */
 	internal->src_iter = src_bio->bi_iter;
+
+	chunk->copy_time = ktime_set(0, 0);
 
 	LZ4E_PR_DEBUG("vect: initialized chunk");
 	return 0;
@@ -552,8 +566,8 @@ static int lz4e_chunk_init_vect(void *chunk_ptr, struct bio *src_bio,
 static int lz4e_chunk_end_vect(void *chunk_ptr, struct bio *dst_bio,
 			       lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_vect *internal =
-		((lz4e_chunk_t *)chunk_ptr)->internal;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_vect *internal = chunk->internal;
 
 	internal->src_bio = NULL;
 
@@ -688,8 +702,8 @@ error:
 static int lz4e_chunk_init_extd(void *chunk_ptr, struct bio *src_bio,
 				lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_extd *internal =
-		((lz4e_chunk_t *)chunk_ptr)->internal;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_extd *internal = chunk->internal;
 	int ret;
 
 	internal->src_bio = src_bio;
@@ -702,6 +716,8 @@ static int lz4e_chunk_init_extd(void *chunk_ptr, struct bio *src_bio,
 		return ret;
 	}
 
+	chunk->copy_time = ktime_set(0, 0);
+
 	LZ4E_PR_DEBUG("extd: initialized chunk");
 	return 0;
 }
@@ -709,9 +725,10 @@ static int lz4e_chunk_init_extd(void *chunk_ptr, struct bio *src_bio,
 static int lz4e_chunk_end_extd(void *chunk_ptr, struct bio *dst_bio,
 			       lz4e_dir_t data_dir)
 {
-	struct lz4e_chunk_extd *internal =
-		((lz4e_chunk_t *)chunk_ptr)->internal;
+	lz4e_chunk_t *chunk = (lz4e_chunk_t *)chunk_ptr;
+	struct lz4e_chunk_extd *internal = chunk->internal;
 
+	/* will remove copying when decompression is done ... */
 	lz4e_buf_copy_to_bio(dst_bio, &internal->src_buf);
 
 	LZ4E_PR_DEBUG("extd: finished chunk");
