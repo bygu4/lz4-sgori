@@ -10,4 +10,4 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-format
       - name: Run clang-format
-        run: ./scripts/check_with_clang_format.sh
+        run: make check-format

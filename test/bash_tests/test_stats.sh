@@ -42,7 +42,7 @@ get_stats() {
 	cat "$PARAM_STATS_W_DECOMP_NS"
 	cat "$PARAM_STATS_W_TOTAL_NS"
 
-	make stats_pprint ARGS="-rwa"
+	make stats-pprint ARGS="-rwa"
 }
 
 run_test() {
