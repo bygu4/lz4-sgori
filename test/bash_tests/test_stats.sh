@@ -22,8 +22,6 @@ reset_stats() {
 }
 
 get_stats() {
-	cat "$PARAM_STATS_PPRINT"
-
 	cat "$PARAM_STATS_R_REQS_TOTAL"
 	cat "$PARAM_STATS_R_REQS_FAILED"
 	cat "$PARAM_STATS_R_SEGMENTS"
@@ -43,6 +41,8 @@ get_stats() {
 	cat "$PARAM_STATS_W_COMP_NS"
 	cat "$PARAM_STATS_W_DECOMP_NS"
 	cat "$PARAM_STATS_W_TOTAL_NS"
+
+	make stats_pprint ARGS="-rwa"
 }
 
 run_test() {

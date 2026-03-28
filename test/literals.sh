@@ -10,7 +10,6 @@ export PARAM_COMP_TYPE="$BDEV_PARAMETERS"/comp_type
 export PARAM_ACCELERATION="$BDEV_PARAMETERS"/acceleration
 
 export PARAM_STATS_RESET="$BDEV_PARAMETERS"/stats_reset
-export PARAM_STATS_PPRINT="$BDEV_PARAMETERS"/stats_pprint
 
 export PARAM_STATS_R_REQS_TOTAL="$BDEV_PARAMETERS"/stats_r_reqs_total
 export PARAM_STATS_R_REQS_FAILED="$BDEV_PARAMETERS"/stats_r_reqs_failed

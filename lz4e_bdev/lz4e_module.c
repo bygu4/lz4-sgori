@@ -159,7 +159,7 @@ static int lz4e_get_acceleration(char *buf, const struct kernel_param *kpar)
 }
 LZ4E_CB_R(lz4e_acceleration_r, lz4e_get_acceleration);
 
-/* ------------------------ request stats as whole ------------------------ */
+/* --------------------------- resetting stats ---------------------------- */
 
 static int lz4e_reset_stats(const char *arg, const struct kernel_param *kpar)
 {
@@ -170,50 +170,6 @@ static int lz4e_reset_stats(const char *arg, const struct kernel_param *kpar)
 	return 0;
 }
 LZ4E_CB_W_IF_DEV(lz4e_stats_reset_w, lz4e_reset_stats, lzmod);
-
-static int lz4e_pprint_stats(char *buf, const struct kernel_param *kpar)
-{
-	struct lz4e_stats *read_stats = lzmod.lzdev->read_stats;
-	struct lz4e_stats *write_stats = lzmod.lzdev->write_stats;
-
-	u64 r_reqs_total = (u64)atomic64_read(&read_stats->reqs_total);
-	u64 r_reqs_failed = (u64)atomic64_read(&read_stats->reqs_failed);
-	u64 r_segments = (u64)atomic64_read(&read_stats->segments);
-	u64 r_decomp_size = (u64)atomic64_read(&read_stats->decomp_size);
-	u64 r_comp_size = (u64)atomic64_read(&read_stats->comp_size);
-	u64 r_copy_ns = (u64)atomic64_read(&read_stats->copy_ns);
-	u64 r_comp_ns = (u64)atomic64_read(&read_stats->comp_ns);
-	u64 r_decomp_ns = (u64)atomic64_read(&read_stats->decomp_ns);
-	u64 r_total_ns = (u64)atomic64_read(&read_stats->total_ns);
-
-	u64 w_reqs_total = (u64)atomic64_read(&write_stats->reqs_total);
-	u64 w_reqs_failed = (u64)atomic64_read(&write_stats->reqs_failed);
-	u64 w_segments = (u64)atomic64_read(&write_stats->segments);
-	u64 w_decomp_size = (u64)atomic64_read(&write_stats->decomp_size);
-	u64 w_comp_size = (u64)atomic64_read(&write_stats->comp_size);
-	u64 w_copy_ns = (u64)atomic64_read(&write_stats->copy_ns);
-	u64 w_comp_ns = (u64)atomic64_read(&write_stats->comp_ns);
-	u64 w_decomp_ns = (u64)atomic64_read(&write_stats->decomp_ns);
-	u64 w_total_ns = (u64)atomic64_read(&write_stats->total_ns);
-
-	return sysfs_emit(
-		buf, LZ4E_STATS_FORMAT, r_reqs_total, r_reqs_failed, r_segments,
-		r_decomp_size, r_comp_size,
-		LZ4E_AVG_BLOCK(r_decomp_size, r_reqs_total, r_reqs_failed),
-		LZ4E_AVG_SEGMENT(r_decomp_size, r_segments),
-		LZ4E_COPY_BPMS(r_decomp_size, r_copy_ns),
-		LZ4E_COMP_BPMS(r_decomp_size, r_comp_ns),
-		LZ4E_DECOMP_BPMS(r_comp_size, r_decomp_ns),
-		LZ4E_TOTAL_BPMS(r_decomp_size, r_total_ns), w_reqs_total,
-		w_reqs_failed, w_segments, w_decomp_size, w_comp_size,
-		LZ4E_AVG_BLOCK(w_decomp_size, w_reqs_total, w_reqs_failed),
-		LZ4E_AVG_SEGMENT(w_decomp_size, w_segments),
-		LZ4E_COPY_BPMS(w_decomp_size, w_copy_ns),
-		LZ4E_COMP_BPMS(w_decomp_size, w_comp_ns),
-		LZ4E_DECOMP_BPMS(w_comp_size, w_decomp_ns),
-		LZ4E_TOTAL_BPMS(w_decomp_size, w_total_ns));
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_pprint_r, lz4e_pprint_stats, lzmod);
 
 /* ------------------------ individual read stats ------------------------- */
 
@@ -392,7 +348,6 @@ LZ4E_PARAM_OPS(lz4e_comp_type_ops, lz4e_comp_type_w, lz4e_comp_type_r);
 LZ4E_PARAM_OPS(lz4e_acceleration_ops, lz4e_acceleration_w, lz4e_acceleration_r);
 
 LZ4E_PARAM_OPS(lz4e_stats_reset_ops, lz4e_stats_reset_w, NULL);
-LZ4E_PARAM_OPS(lz4e_stats_pprint_ops, NULL, lz4e_stats_pprint_r);
 
 LZ4E_PARAM_OPS(lz4e_stats_r_reqs_total_ops, NULL, lz4e_stats_r_reqs_total_r);
 LZ4E_PARAM_OPS(lz4e_stats_r_reqs_failed_ops, NULL, lz4e_stats_r_reqs_failed_r);
@@ -430,9 +385,6 @@ MODULE_PARM_DESC(acceleration, "Acceleration factor for compression");
 
 module_param_cb(stats_reset, &lz4e_stats_reset_ops, NULL, S_IWUSR);
 MODULE_PARM_DESC(stats_reset, "Reset all request statistics");
-
-module_param_cb(stats_pprint, &lz4e_stats_pprint_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_pprint, "Print formatted request statistics");
 
 module_param_cb(stats_r_reqs_total, &lz4e_stats_r_reqs_total_ops, NULL,
 		S_IRUGO);
