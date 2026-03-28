@@ -4,8 +4,8 @@ source test/literals.sh
 
 set -euo pipefail
 
-# 10^9 / 1024, to convert bytes/ns to kb/s
-KBPS_FACTOR="976562.5"
+# to convert bytes/ns to mb/s
+MBPS_FACTOR="1000000000 / (1024 * 1024)"
 
 PRINT_READ=0
 PRINT_WRITE=0
@@ -131,29 +131,29 @@ all_total_ns=$(add "$r_total_ns" "$w_total_ns")
 r_reqs_success=$(sub "$r_reqs_total" "$r_reqs_failed")
 r_avg_block=$(div "$r_decomp_size" "$r_reqs_success" "3")
 r_avg_segment=$(div "$r_decomp_size" "$r_segments" "3")
-r_comp_ratio=$(div "$r_decomp_size" "$r_comp_size" "6")
-r_copy_kbps=$(mul "$KBPS_FACTOR" "$(div "$r_decomp_size" "$r_copy_ns" "6")")
-r_comp_kbps=$(mul "$KBPS_FACTOR" "$(div "$r_decomp_size" "$r_comp_ns" "6")")
-r_decomp_kbps=$(mul "$KBPS_FACTOR" "$(div "$r_comp_size" "$r_decomp_ns" "6")")
-r_total_kbps=$(mul "$KBPS_FACTOR" "$(div "$r_decomp_size" "$r_total_ns" "6")")
+r_comp_ratio=$(div "$r_decomp_size" "$r_comp_size" "9")
+r_copy_mbps=$(mul "$MBPS_FACTOR" "$(div "$r_decomp_size" "$r_copy_ns" "6")")
+r_comp_mbps=$(mul "$MBPS_FACTOR" "$(div "$r_decomp_size" "$r_comp_ns" "6")")
+r_decomp_mbps=$(mul "$MBPS_FACTOR" "$(div "$r_comp_size" "$r_decomp_ns" "6")")
+r_total_mbps=$(mul "$MBPS_FACTOR" "$(div "$r_decomp_size" "$r_total_ns" "6")")
 
 w_reqs_success=$(sub "$w_reqs_total" "$w_reqs_failed")
 w_avg_block=$(div "$w_decomp_size" "$w_reqs_success" "3")
 w_avg_segment=$(div "$w_decomp_size" "$w_segments" "3")
-w_comp_ratio=$(div "$w_decomp_size" "$w_comp_size" "6")
-w_copy_kbps=$(mul "$KBPS_FACTOR" "$(div "$w_decomp_size" "$w_copy_ns" "6")")
-w_comp_kbps=$(mul "$KBPS_FACTOR" "$(div "$w_decomp_size" "$w_comp_ns" "6")")
-w_decomp_kbps=$(mul "$KBPS_FACTOR" "$(div "$w_comp_size" "$w_decomp_ns" "6")")
-w_total_kbps=$(mul "$KBPS_FACTOR" "$(div "$w_decomp_size" "$w_total_ns" "6")")
+w_comp_ratio=$(div "$w_decomp_size" "$w_comp_size" "9")
+w_copy_mbps=$(mul "$MBPS_FACTOR" "$(div "$w_decomp_size" "$w_copy_ns" "6")")
+w_comp_mbps=$(mul "$MBPS_FACTOR" "$(div "$w_decomp_size" "$w_comp_ns" "6")")
+w_decomp_mbps=$(mul "$MBPS_FACTOR" "$(div "$w_comp_size" "$w_decomp_ns" "6")")
+w_total_mbps=$(mul "$MBPS_FACTOR" "$(div "$w_decomp_size" "$w_total_ns" "6")")
 
 all_reqs_success=$(sub "$all_reqs_total" "$all_reqs_failed")
 all_avg_block=$(div "$all_decomp_size" "$all_reqs_success" "3")
 all_avg_segment=$(div "$all_decomp_size" "$all_segments" "3")
-all_comp_ratio=$(div "$all_decomp_size" "$all_comp_size" "6")
-all_copy_kbps=$(mul "$KBPS_FACTOR" "$(div "$all_decomp_size" "$all_copy_ns" "6")")
-all_comp_kbps=$(mul "$KBPS_FACTOR" "$(div "$all_decomp_size" "$all_comp_ns" "6")")
-all_decomp_kbps=$(mul "$KBPS_FACTOR" "$(div "$all_comp_size" "$all_decomp_ns" "6")")
-all_total_kbps=$(mul "$KBPS_FACTOR" "$(div "$all_decomp_size" "$all_total_ns" "6")")
+all_comp_ratio=$(div "$all_decomp_size" "$all_comp_size" "9")
+all_copy_mbps=$(mul "$MBPS_FACTOR" "$(div "$all_decomp_size" "$all_copy_ns" "6")")
+all_comp_mbps=$(mul "$MBPS_FACTOR" "$(div "$all_decomp_size" "$all_comp_ns" "6")")
+all_decomp_mbps=$(mul "$MBPS_FACTOR" "$(div "$all_comp_size" "$all_decomp_ns" "6")")
+all_total_mbps=$(mul "$MBPS_FACTOR" "$(div "$all_decomp_size" "$all_total_ns" "6")")
 
 # ---------------- print to stdout ----------------
 
@@ -169,10 +169,10 @@ if [ "$PRINT_READ" -eq 1 ]; then
 	output+="\tsegments: $r_segments\n"
 	output+="\tavg_block: $r_avg_block\n"
 	output+="\tavg_segment: $r_avg_segment\n\n"
-	output+="\tcopy_kbps: $r_copy_kbps\n"
-	output+="\tcomp_kbps: $r_comp_kbps\n"
-	output+="\tdecomp_kbps: $r_decomp_kbps\n"
-	output+="\ttotal_kbps: $r_total_kbps\n"
+	output+="\tcopy_mbps: $r_copy_mbps\n"
+	output+="\tcomp_mbps: $r_comp_mbps\n"
+	output+="\tdecomp_mbps: $r_decomp_mbps\n"
+	output+="\ttotal_mbps: $r_total_mbps\n"
 fi
 
 if [ "$PRINT_WRITE" -eq 1 ]; then
@@ -185,10 +185,10 @@ if [ "$PRINT_WRITE" -eq 1 ]; then
 	output+="\tsegments: $w_segments\n"
 	output+="\tavg_block: $w_avg_block\n"
 	output+="\tavg_segment: $w_avg_segment\n\n"
-	output+="\tcopy_kbps: $w_copy_kbps\n"
-	output+="\tcomp_kbps: $w_comp_kbps\n"
-	output+="\tdecomp_kbps: $w_decomp_kbps\n"
-	output+="\ttotal_kbps: $w_total_kbps\n"
+	output+="\tcopy_mbps: $w_copy_mbps\n"
+	output+="\tcomp_mbps: $w_comp_mbps\n"
+	output+="\tdecomp_mbps: $w_decomp_mbps\n"
+	output+="\ttotal_mbps: $w_total_mbps\n"
 fi
 
 if [ "$PRINT_ALL" -eq 1 ]; then
@@ -201,10 +201,10 @@ if [ "$PRINT_ALL" -eq 1 ]; then
 	output+="\tsegments: $all_segments\n"
 	output+="\tavg_block: $all_avg_block\n"
 	output+="\tavg_segment: $all_avg_segment\n\n"
-	output+="\tcopy_kbps: $all_copy_kbps\n"
-	output+="\tcomp_kbps: $all_comp_kbps\n"
-	output+="\tdecomp_kbps: $all_decomp_kbps\n"
-	output+="\ttotal_kbps: $all_total_kbps\n"
+	output+="\tcopy_mbps: $all_copy_mbps\n"
+	output+="\tcomp_mbps: $all_comp_mbps\n"
+	output+="\tdecomp_mbps: $all_decomp_mbps\n"
+	output+="\ttotal_mbps: $all_total_mbps\n"
 fi
 
 echo -e "$output"
