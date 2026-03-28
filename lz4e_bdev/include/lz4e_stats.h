@@ -9,7 +9,6 @@
 #define LZ4E_STATS_H
 
 #include <linux/blk_types.h>
-#include <linux/math.h>
 #include <linux/types.h>
 
 #include "lz4e_chunk.h"
@@ -42,63 +41,5 @@ void lz4e_stats_reset(struct lz4e_stats *lzstats);
 
 /* free request statistics */
 void lz4e_stats_free(struct lz4e_stats *lzstats);
-
-#define LZ4E_NS_TO_MS(ns) (DIV_ROUND_UP((ns), 1000000LL))
-
-#define LZ4E_REQS_SUCCESS(total, failed) ((total) - (failed))
-
-#define LZ4E_AVG_BLOCK(decomp_size, total, failed)                    \
-	((LZ4E_REQS_SUCCESS(total, failed) != 0) ?                    \
-		 ((decomp_size) / LZ4E_REQS_SUCCESS(total, failed)) : \
-		 0)
-
-#define LZ4E_AVG_SEGMENT(decomp_size, segments) \
-	(((segments) != 0) ? ((decomp_size) / (segments)) : 0)
-
-/* throughput in bytes/millisecond ~ KB/second */
-
-#define LZ4E_BPMS(bytes, ns) \
-	((LZ4E_NS_TO_MS(ns) != 0) ? ((bytes) / LZ4E_NS_TO_MS(ns)) : 0)
-
-#define LZ4E_COPY_BPMS(decomp_size, copy_ns) \
-	(LZ4E_BPMS((decomp_size), (copy_ns)))
-
-#define LZ4E_COMP_BPMS(decomp_size, comp_ns) \
-	(LZ4E_BPMS((decomp_size), (comp_ns)))
-
-#define LZ4E_DECOMP_BPMS(comp_size, decomp_ns) \
-	(LZ4E_BPMS((comp_size), (decomp_ns)))
-
-#define LZ4E_TOTAL_BPMS(decomp_size, total_ns) \
-	(LZ4E_BPMS((decomp_size), (total_ns)))
-
-/* format string for request statistics */
-#define LZ4E_STATS_FORMAT \
-	"\
-read:\n\
-	reqs_total: %llu\n\
-	reqs_failed: %llu\n\
-	segments: %llu\n\
-	decomp_size: %llu\n\
-	comp_size: %llu\n\
-	avg_block: %llu\n\
-	avg_segment: %llu\n\
-	copy_bpms: %llu\n\
-	comp_bpms: %llu\n\
-	decomp_bpms: %llu\n\
-	total_bpms: %llu\n\
-write:\n\
-	reqs_total: %llu\n\
-	reqs_failed: %llu\n\
-	segments: %llu\n\
-	decomp_size: %llu\n\
-	comp_size: %llu\n\
-	avg_block: %llu\n\
-	avg_segment: %llu\n\
-	copy_bpms: %llu\n\
-	comp_bpms: %llu\n\
-	decomp_bpms: %llu\n\
-	total_bpms: %llu\n\
-"
 
 #endif
