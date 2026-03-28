@@ -70,28 +70,28 @@ reinsert:
 lib:
 	$(MAKE) -j -C $(KERNEL_SOURCES_DIR) M=$(TARGET_LIB) MO=$(OUTPUT_LIB) modules
 
-.PHONY: lib_install
-lib_install:
+.PHONY: lib-install
+lib-install:
 	$(MAKE) -j -C $(KERNEL_SOURCES_DIR) M=$(TARGET_LIB) MO=$(OUTPUT_LIB) modules_install
 
-.PHONY: lib_clean
-lib_clean:
+.PHONY: lib-clean
+lib-clean:
 	$(MAKE) -j -C $(KERNEL_SOURCES_DIR) M=$(TARGET_LIB) MO=$(OUTPUT_LIB) clean
 	rm -rf $(OUTPUT_LIB)
 
-.PHONY: lib_insert
-lib_insert:
+.PHONY: lib-insert
+lib-insert:
 	insmod $(COMPRESS_OBJ)
 	insmod $(DECOMPRESS_OBJ)
 
-.PHONY: lib_remove
-lib_remove:
+.PHONY: lib-remove
+lib-remove:
 	rmmod $(DECOMPRESS_NAME) || true
 	rmmod $(COMPRESS_NAME) || true
 
-.PHONY: lib_reinsert
-lib_reinsert:
-	$(MAKE) lib_remove && $(MAKE) lib_insert
+.PHONY: lib-reinsert
+lib-reinsert:
+	$(MAKE) lib-remove && $(MAKE) lib-insert
 
 # ---------------- Block dev only ----------------
 
@@ -99,26 +99,26 @@ lib_reinsert:
 bdev:
 	$(MAKE) -j -C $(KERNEL_SOURCES_DIR) M=$(TARGET_BDEV) MO=$(OUTPUT_BDEV) modules
 
-.PHONY: bdev_install
-bdev_install:
+.PHONY: bdev-install
+bdev-install:
 	$(MAKE) -j -C $(KERNEL_SOURCES_DIR) M=$(TARGET_BDEV) MO=$(OUTPUT_BDEV) modules_install
 
-.PHONY: bdev_clean
-bdev_clean:
+.PHONY: bdev-clean
+bdev-clean:
 	$(MAKE) -j -C $(KERNEL_SOURCES_DIR) M=$(TARGET_BDEV) MO=$(OUTPUT_BDEV) clean
 	rm -rf $(OUTPUT_BDEV)
 
-.PHONY: bdev_insert
-bdev_insert:
+.PHONY: bdev-insert
+bdev-insert:
 	insmod $(BDEV_OBJ)
 
-.PHONY: bdev_remove
-bdev_remove:
+.PHONY: bdev-remove
+bdev-remove:
 	rmmod $(BDEV_NAME) || true
 
-.PHONY: bdev_reinsert
-bdev_reinsert:
-	$(MAKE) bdev_remove && $(MAKE) bdev_insert
+.PHONY: bdev-reinsert
+bdev-reinsert:
+	$(MAKE) bdev-remove && $(MAKE) bdev-insert
 
 # ---------------- Testing ----------------
 
@@ -126,30 +126,30 @@ bdev_reinsert:
 test:
 	$(MAKE) && $(TEST_ALL)
 
-.PHONY: test_fast
-test_fast:
+.PHONY: test-fast
+test-fast:
 	$(MAKE) && $(TEST_FAST)
 
-.PHONY: test_fio
-test_fio:
+.PHONY: test-fio
+test-fio:
 	$(MAKE) && $(TEST_FIO)
 
 # ---------------- Helper scripts ----------------
 
-.PHONY: check_format
-check_format:
+.PHONY: check-format
+check-format:
 	$(CHECK_FORMAT)
 
-.PHONY: check_tidy
-check_tidy:
+.PHONY: check-tidy
+check-tidy:
 	$(CHECK_TIDY)
 
-.PHONY: fix_format
-fix_format:
+.PHONY: fix-format
+fix-format:
 	$(FIX_FORMAT)
 
-.PHONY: fix_tidy
-fix_tidy:
+.PHONY: fix-tidy
+fix-tidy:
 	$(FIX_TIDY)
 
 # ---------------- Printing stats ----------------
@@ -175,8 +175,8 @@ ifdef ARGS
 	STATS_PPRINT_ARGS := $(ARGS)
 endif
 
-.PHONY: stats_pprint
-stats_pprint:
+.PHONY: stats-pprint
+stats-pprint:
 	$(STATS_PPRINT) $(STATS_PPRINT_ARGS)
 
 # ---------------- Wiki synchronization ----------------
@@ -204,6 +204,6 @@ ifdef ARGS
 	WIKI_SYNC_ARGS := $(ARGS)
 endif
 
-.PHONY: wiki_sync
-wiki_sync:
+.PHONY: wiki-sync
+wiki-sync:
 	$(WIKI_SYNC) $(WIKI_SYNC_ARGS)

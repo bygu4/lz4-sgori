@@ -30,4 +30,4 @@ jobs:
       - name: Run wiki synchronization script
         run: |
           cd $GITHUB_WORKSPACE/${{ github.repository }}
-          make wiki_sync ARGS="-w $GITHUB_WORKSPACE/${{ github.repository }}.wiki -b ${{ github.event.before }} -y"
+          make wiki-sync ARGS="-w $GITHUB_WORKSPACE/${{ github.repository }}.wiki -b ${{ github.event.before }} -y"
