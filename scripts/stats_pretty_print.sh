@@ -5,7 +5,7 @@ source test/literals.sh
 set -euo pipefail
 
 # to convert bytes/ns to mb/s
-MBPS_FACTOR="1000000000 / (1024 * 1024)"
+MBPS_FACTOR=$(echo "scale=6; 1000000000 / (1024 * 1024)" | bc)
 
 PRINT_READ=0
 PRINT_WRITE=0
