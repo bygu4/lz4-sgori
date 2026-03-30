@@ -6,9 +6,11 @@ eliminating the need for additional data copying.
 ## Key Features
 
 - Kernel-space implementation of LZ4 with SG buffers support
-- Block device module for tests and experiments
-- Test environment for validation
 - API extension in [`lz4e/include/lz4e.h`](https://github.com/ItIsMrLaG/lz4-sgori/blob/main/lz4e/include/lz4e.h)
+- Test environment for validation
+- Block device module for tests and experiments
+- Block dev I/O statistics accessible via sysfs, pretty-print with `make stats-pprint`
+- Compression path selection using `comp_type` param ("cont", "vect", "strm", "extd")
 
 ## Extended API
 
@@ -52,7 +54,7 @@ modprobe lz4 lz4_compress lz4_decompress
 
 2. Build and insert extended compression library only:
    ```bash
-   make lib && make lib_insert
+   make lib && make lib-insert
    ```
 
 See more options: [doc/Usage.md](doc/Usage.md).
@@ -70,6 +72,9 @@ See more options: [doc/Usage.md](doc/Usage.md).
    ```bash
    echo -n "unmap" > /sys/module/lz4e_bdev/parameters/unmapper
    ```
+
+Use more sysfs parameters, including I/O stats, compression method and acceleration factor:
+[doc/Usage.md#using-the-block-device](doc/Usage.md#using-the-block-device).
 
 ## Testing
 
