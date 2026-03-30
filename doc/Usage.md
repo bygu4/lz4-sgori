@@ -31,10 +31,10 @@ After compiling the modules, they can be dynamically inserted into the running k
 make insert
 ```
 ```bash
-make lib_insert
+make lib-insert
 ```
 ```bash
-make bdev_insert
+make bdev-insert
 ```
 for all modules, library, or the block device respectively.
 
@@ -43,10 +43,10 @@ Alternatively, you can install them into the `modules` directory of your kernel 
 make install
 ```
 ```bash
-make lib_install
+make lib-install
 ```
 ```bash
-make bdev_install
+make bdev-install
 ```
 After that, the modules can be inserted using `modprobe`.
 
@@ -57,10 +57,10 @@ After your work is done, you can remove the modules from the kernel by running (
 make remove
 ```
 ```bash
-make lib_remove
+make lib-remove
 ```
 ```bash
-make bdev_remove
+make bdev-remove
 ```
 
 To clear the output directory `build`, you can run:
@@ -90,9 +90,13 @@ you can add it to your includes using gcc's `-I` flag, or by directly copying it
 After module `lz4e_bdev` is inserted into the kernel, its parameters can be accessed using sysfs:
 ```bash
 /sys/module/lz4e_bdev/parameters
-├── /sys/module/lz4e_bdev/parameters/mapper   # create a proxy block device over the given one
-├── /sys/module/lz4e_bdev/parameters/unmapper # remove the proxy block device
-└── /sys/module/lz4e_bdev/parameters/stats    # access I/O request statistics
+├── /sys/module/lz4e_bdev/parameters/mapper        # create a proxy block device over the given one
+├── /sys/module/lz4e_bdev/parameters/unmapper      # remove the proxy block device
+├── /sys/module/lz4e_bdev/parameters/acceleration  # LZ4 acceleration factor
+├── /sys/module/lz4e_bdev/parameters/comp_type     # path for compression (cont, vect, strm, extd)
+├── /sys/module/lz4e_bdev/parameters/stats_reset   # reset I/O statistics
+├── /sys/module/lz4e_bdev/parameters/stats_r_[...] # individual I/O stats for read
+└── /sys/module/lz4e_bdev/parameters/stats_w_[...] # individual I/O stats for write
 ```
 
 For example, you can create a block device by running:
@@ -101,13 +105,50 @@ echo -n "<path_to_underlying_device>" > /sys/module/lz4e_bdev/parameters/mapper
 ```
 To remove the created device, run:
 ```bash
-echo -n "unmap" > /sys/module/lz4e_bdev/parameters/unmapper
+echo -n "<any input>" > /sys/module/lz4e_bdev/parameters/unmapper
 ```
-To print I/O statistics of device, use:
+
+With `comp_type` you can select the way I/O requests are processed by LZ4. Currently, there are 4 options:
+- `cont` — copy data to a preallocated contiguous buffer, run standard LZ4;
+- `vect` — run standard LZ4 compression/decompression for each of bvecs;
+- `strm` — same as `vect`, but use [Streaming API](https://github.com/lz4/lz4/blob/dev/examples/streaming_api_basics.md) to improve compression ratio;
+- `extd` — use extended LZ4 for scatter-gather buffers.
+
+`comp_type` is set to `extd` by default, to change it, for example, to `strm`, you would run:
 ```bash
-cat /sys/module/lz4e_bdev/parameters/stats
+echo -n "strm" > /sys/module/lz4e_bdev/parameters/comp_type
 ```
-And to reset the request statistics:
+
+Using the `acceleration` parameter you can speed up the compression, at the cost of compression ratio.
+According to [documentation](https://elixir.bootlin.com/linux/v6.19.8/source/include/linux/lz4.h#L200) in the kernel,
+each successive value provides roughly +~3% to speed. By default, the acceleration factor is 1.
+
+## I/O statistics
+
+`lz4e_bdev` has a range of request statistics, both for read and write. Each individual value can be obtained from sysfs using read-only parameters.
+Statistics are collected for read and write separately. At the moment, they consist of:
+- `reqs_total` — total amount of I/O requests;
+- `reqs_failed` — number of failed requests;
+- `segments` — number of processed single-page segments;
+- `decomp_size` — total size of data before compression in bytes;
+- `comp_size` — total size of data after compression in bytes;
+- `copy_ns` — time spent copying data in nanoseconds (can be zero depending on `comp_type`);
+- `comp_ns` — time elapsed during compression in nanoseconds;
+- `decomp_ns` — time elapsed during decompression in nanoseconds;
+- `total_ns` — total time elapsed during I/O processing in nanoseconds (including work of the underlying device).
+
+All stats can be reset using `stats_reset` parameter:
 ```bash
-echo -n "reset" > /sys/module/lz4e_bdev/parameters/stats
+echo -n "<any input>" > /sys/module/lz4e_bdev/parameters/stats_reset
 ```
+
+Also, using `make stats-pprint` you can run a script that would print formatted statistics to stdout.
+By default it prints a summary for read and write combined. You can specify which stats to print using options `-r`, `-w`, `-a` (for "read", "write", "all").
+For example, to print read and write stats, run `make stats-pprint ARGS="-rw"`.
+
+## Testing
+
+To run the complete test suite, which consists of basic functionality tests as well as more complex ones using
+[fio](https://fio.readthedocs.io/en/latest/fio_doc.html) utility, run `make test`.
+
+To run a faster and simpler suite for the block device, use `make test-fast`. You can also run only the `fio` tests with `make test-fio`.

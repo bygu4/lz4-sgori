@@ -95,6 +95,16 @@ int LZ4E_compress_default(const struct bio_vec *src, struct bio_vec *dst,
 		struct bvec_iter *srcIter, struct bvec_iter *dstIter, void *wrkmem);
 ```
 
+You can also the specify the "acceleration" factor using `LZ4E_compress_fast` function:
+```c
+int LZ4E_compress_fast(const struct bio_vec *src, struct bio_vec *dst,
+		struct bvec_iter *srcIter, struct bvec_iter *dstIter,
+		int acceleration, void *wrkmem);
+```
+The acceleration factor speeds up the compression, but lowers compression ratio.
+Here it works the same as in standard [`LZ4_compress_fast`](https://elixir.bootlin.com/linux/v6.19.8/source/include/linux/lz4.h#L200).
+In the "default" function, the acceleration factor is set to 1.
+
 Input and maximum output sizes here are discovered through `srcIter` and `dstIter` respectively.
 For I/O, iterators can be created and modified before calling the function and are changed at
 runtime to contain current position after the function is called.
