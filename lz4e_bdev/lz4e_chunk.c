@@ -12,7 +12,6 @@
 #include <linux/ktime.h>
 #include <linux/lz4.h>
 #include <linux/minmax.h>
-#include <linux/preempt.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
 #include <linux/timekeeping.h>
@@ -894,13 +893,7 @@ inline int lz4e_chunk_init(lz4e_chunk_t *chunk, struct bio *src_bio,
 
 inline int lz4e_chunk_run_comp(lz4e_chunk_t *chunk)
 {
-	int ret;
-
-	preempt_disable();
-	ret = chunk->ops->run_comp(chunk);
-	preempt_enable();
-
-	return ret;
+	return chunk->ops->run_comp(chunk);
 }
 
 inline int lz4e_chunk_end(lz4e_chunk_t *chunk, struct bio *dst_bio,

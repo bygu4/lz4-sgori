@@ -10,6 +10,7 @@
 
 #include <linux/blk_types.h>
 #include <linux/ktime.h>
+#include <linux/preempt.h>
 #include <linux/timekeeping.h>
 #include <linux/types.h>
 
@@ -57,9 +58,11 @@ struct lz4e_chunk_extd {
 		ktime_t start;                      \
 		ktime_t end;                        \
                                                     \
+		preempt_disable();                  \
 		start = ktime_get();                \
 		(ret) = (func);                     \
 		end = ktime_get();                  \
+		preempt_enable();                   \
                                                     \
 		(duration) = ktime_sub(end, start); \
 	} while (0)
