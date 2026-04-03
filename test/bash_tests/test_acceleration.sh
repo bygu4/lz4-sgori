@@ -4,7 +4,7 @@ source test/literals.sh
 
 set -euxo pipefail
 
-bss=("1k" "4k" "16k" "256k" "512k" "1M" "2M")
+accelerations=("-32" "0" "4" "90" "455" "8200" "33000" "232323")
 
 setup() {
 	make reinsert
@@ -41,9 +41,11 @@ run_all_tests() {
 		echo -n "$comp_type" > "$PARAM_COMP_TYPE"
 		cat "$PARAM_COMP_TYPE"
 
-		i=0
-		for test_file in "$TEST_FILES_DIR"/*; do
-			run_test "$test_file" "${bss[i++]}"
+		for acceleration in "${accelerations[@]}"; do
+			echo -n "$acceleration" > "$PARAM_ACCELERATION"
+			cat "$PARAM_ACCELERATION"
+
+			run_test "$TEST_FILE_ACCELERATION" "64k"
 		done
 	done
 }

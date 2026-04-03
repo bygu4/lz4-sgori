@@ -125,7 +125,7 @@ static int lz4e_get_comp_type(char *buf, const struct kernel_param *kpar)
 		return -EAGAIN;
 	}
 
-	return sysfs_emit(buf, "%s", lz4e_comp_str[icomp]);
+	return sysfs_emit(buf, "%s\n", lz4e_comp_str[icomp]);
 }
 LZ4E_CB_R(lz4e_comp_type_r, lz4e_get_comp_type);
 
@@ -155,7 +155,7 @@ LZ4E_CB_W(lz4e_acceleration_w, lz4e_set_acceleration);
 
 static int lz4e_get_acceleration(char *buf, const struct kernel_param *kpar)
 {
-	return sysfs_emit(buf, "%d", lzmod.acceleration);
+	return sysfs_emit(buf, "%d\n", lzmod.acceleration);
 }
 LZ4E_CB_R(lz4e_acceleration_r, lz4e_get_acceleration);
 
@@ -221,7 +221,7 @@ static int lz4e_get_r_reqs_total(char *buf, const struct kernel_param *kpar)
 {
 	u64 reqs_total =
 		(u64)atomic64_read(&lzmod.lzdev->read_stats->reqs_total);
-	return sysfs_emit(buf, "%llu", reqs_total);
+	return sysfs_emit(buf, "%llu\n", reqs_total);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_reqs_total_r, lz4e_get_r_reqs_total, lzmod);
 
@@ -229,14 +229,14 @@ static int lz4e_get_r_reqs_failed(char *buf, const struct kernel_param *kpar)
 {
 	u64 reqs_failed =
 		(u64)atomic64_read(&lzmod.lzdev->read_stats->reqs_failed);
-	return sysfs_emit(buf, "%llu", reqs_failed);
+	return sysfs_emit(buf, "%llu\n", reqs_failed);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_reqs_failed_r, lz4e_get_r_reqs_failed, lzmod);
 
 static int lz4e_get_r_segments(char *buf, const struct kernel_param *kpar)
 {
 	u64 segments = (u64)atomic64_read(&lzmod.lzdev->read_stats->segments);
-	return sysfs_emit(buf, "%llu", segments);
+	return sysfs_emit(buf, "%llu\n", segments);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_segments_r, lz4e_get_r_segments, lzmod);
 
@@ -244,42 +244,42 @@ static int lz4e_get_r_decomp_size(char *buf, const struct kernel_param *kpar)
 {
 	u64 decomp_size =
 		(u64)atomic64_read(&lzmod.lzdev->read_stats->decomp_size);
-	return sysfs_emit(buf, "%llu", decomp_size);
+	return sysfs_emit(buf, "%llu\n", decomp_size);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_decomp_size_r, lz4e_get_r_decomp_size, lzmod);
 
 static int lz4e_get_r_comp_size(char *buf, const struct kernel_param *kpar)
 {
 	u64 comp_size = (u64)atomic64_read(&lzmod.lzdev->read_stats->comp_size);
-	return sysfs_emit(buf, "%llu", comp_size);
+	return sysfs_emit(buf, "%llu\n", comp_size);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_comp_size_r, lz4e_get_r_comp_size, lzmod);
 
 static int lz4e_get_r_copy_ns(char *buf, const struct kernel_param *kpar)
 {
 	u64 copy_ns = (u64)atomic64_read(&lzmod.lzdev->read_stats->copy_ns);
-	return sysfs_emit(buf, "%llu", copy_ns);
+	return sysfs_emit(buf, "%llu\n", copy_ns);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_copy_ns_r, lz4e_get_r_copy_ns, lzmod);
 
 static int lz4e_get_r_comp_ns(char *buf, const struct kernel_param *kpar)
 {
 	u64 comp_ns = (u64)atomic64_read(&lzmod.lzdev->read_stats->comp_ns);
-	return sysfs_emit(buf, "%llu", comp_ns);
+	return sysfs_emit(buf, "%llu\n", comp_ns);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_comp_ns_r, lz4e_get_r_comp_ns, lzmod);
 
 static int lz4e_get_r_decomp_ns(char *buf, const struct kernel_param *kpar)
 {
 	u64 decomp_ns = (u64)atomic64_read(&lzmod.lzdev->read_stats->decomp_ns);
-	return sysfs_emit(buf, "%llu", decomp_ns);
+	return sysfs_emit(buf, "%llu\n", decomp_ns);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_decomp_ns_r, lz4e_get_r_decomp_ns, lzmod);
 
 static int lz4e_get_r_total_ns(char *buf, const struct kernel_param *kpar)
 {
 	u64 total_ns = (u64)atomic64_read(&lzmod.lzdev->read_stats->total_ns);
-	return sysfs_emit(buf, "%llu", total_ns);
+	return sysfs_emit(buf, "%llu\n", total_ns);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_r_total_ns_r, lz4e_get_r_total_ns, lzmod);
 
@@ -289,7 +289,7 @@ static int lz4e_get_w_reqs_total(char *buf, const struct kernel_param *kpar)
 {
 	u64 reqs_total =
 		(u64)atomic64_read(&lzmod.lzdev->write_stats->reqs_total);
-	return sysfs_emit(buf, "%llu", reqs_total);
+	return sysfs_emit(buf, "%llu\n", reqs_total);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_reqs_total_r, lz4e_get_w_reqs_total, lzmod);
 
@@ -297,14 +297,14 @@ static int lz4e_get_w_reqs_failed(char *buf, const struct kernel_param *kpar)
 {
 	u64 reqs_failed =
 		(u64)atomic64_read(&lzmod.lzdev->write_stats->reqs_failed);
-	return sysfs_emit(buf, "%llu", reqs_failed);
+	return sysfs_emit(buf, "%llu\n", reqs_failed);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_reqs_failed_r, lz4e_get_w_reqs_failed, lzmod);
 
 static int lz4e_get_w_segments(char *buf, const struct kernel_param *kpar)
 {
 	u64 segments = (u64)atomic64_read(&lzmod.lzdev->write_stats->segments);
-	return sysfs_emit(buf, "%llu", segments);
+	return sysfs_emit(buf, "%llu\n", segments);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_segments_r, lz4e_get_w_segments, lzmod);
 
@@ -312,7 +312,7 @@ static int lz4e_get_w_decomp_size(char *buf, const struct kernel_param *kpar)
 {
 	u64 decomp_size =
 		(u64)atomic64_read(&lzmod.lzdev->write_stats->decomp_size);
-	return sysfs_emit(buf, "%llu", decomp_size);
+	return sysfs_emit(buf, "%llu\n", decomp_size);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_decomp_size_r, lz4e_get_w_decomp_size, lzmod);
 
@@ -320,21 +320,21 @@ static int lz4e_get_w_comp_size(char *buf, const struct kernel_param *kpar)
 {
 	u64 comp_size =
 		(u64)atomic64_read(&lzmod.lzdev->write_stats->comp_size);
-	return sysfs_emit(buf, "%llu", comp_size);
+	return sysfs_emit(buf, "%llu\n", comp_size);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_comp_size_r, lz4e_get_w_comp_size, lzmod);
 
 static int lz4e_get_w_copy_ns(char *buf, const struct kernel_param *kpar)
 {
 	u64 copy_ns = (u64)atomic64_read(&lzmod.lzdev->write_stats->copy_ns);
-	return sysfs_emit(buf, "%llu", copy_ns);
+	return sysfs_emit(buf, "%llu\n", copy_ns);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_copy_ns_r, lz4e_get_w_copy_ns, lzmod);
 
 static int lz4e_get_w_comp_ns(char *buf, const struct kernel_param *kpar)
 {
 	u64 comp_ns = (u64)atomic64_read(&lzmod.lzdev->write_stats->comp_ns);
-	return sysfs_emit(buf, "%llu", comp_ns);
+	return sysfs_emit(buf, "%llu\n", comp_ns);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_comp_ns_r, lz4e_get_w_comp_ns, lzmod);
 
@@ -342,14 +342,14 @@ static int lz4e_get_w_decomp_ns(char *buf, const struct kernel_param *kpar)
 {
 	u64 decomp_ns =
 		(u64)atomic64_read(&lzmod.lzdev->write_stats->decomp_ns);
-	return sysfs_emit(buf, "%llu", decomp_ns);
+	return sysfs_emit(buf, "%llu\n", decomp_ns);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_decomp_ns_r, lz4e_get_w_decomp_ns, lzmod);
 
 static int lz4e_get_w_total_ns(char *buf, const struct kernel_param *kpar)
 {
 	u64 total_ns = (u64)atomic64_read(&lzmod.lzdev->write_stats->total_ns);
-	return sysfs_emit(buf, "%llu", total_ns);
+	return sysfs_emit(buf, "%llu\n", total_ns);
 }
 LZ4E_CB_R_IF_DEV(lz4e_stats_w_total_ns_r, lz4e_get_w_total_ns, lzmod);
 

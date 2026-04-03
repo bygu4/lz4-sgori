@@ -27,7 +27,7 @@ typedef enum {
 #define LZ4E_COMP_STR_LEN 4
 
 extern const lz4e_comp_t lz4e_comp_type[LZ4E_COMP_TYPE_COUNT];
-extern const char lz4e_comp_str[LZ4E_COMP_TYPE_COUNT][LZ4E_COMP_STR_LEN];
+extern const char *lz4e_comp_str[LZ4E_COMP_TYPE_COUNT];
 
 typedef enum {
 	LZ4E_READ,

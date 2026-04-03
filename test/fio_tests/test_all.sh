@@ -7,7 +7,7 @@ set -euxo pipefail
 setup() {
 	make reinsert
 	modprobe brd rd_nr=1 rd_size="$DISK_SIZE_IN_KB" max_part=0
-	echo -n "$UNDERLYING_DEVICE" > "$DEVICE_MAPPER"
+	echo -n "$UNDERLYING_DEVICE" > "$PARAM_MAPPER"
 }
 
 run_test() {
@@ -16,8 +16,13 @@ run_test() {
 }
 
 run_all_tests() {
-	for test_file in test/fio_tests/test_*.fio; do
-		run_test "$test_file"
+	for comp_type in "${COMP_TYPES[@]}"; do
+		echo -n "$comp_type" > "$PARAM_COMP_TYPE"
+		cat "$PARAM_COMP_TYPE"
+
+		for test_file in "$FIO_TESTS_DIR"/test_*.fio; do
+			run_test "$test_file"
+		done
 	done
 }
 

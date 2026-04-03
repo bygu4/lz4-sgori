@@ -31,7 +31,7 @@ const lz4e_comp_t lz4e_comp_type[LZ4E_COMP_TYPE_COUNT] = {
 	LZ4E_COMP_STRM,
 	LZ4E_COMP_EXTD,
 };
-const char lz4e_comp_str[LZ4E_COMP_TYPE_COUNT][LZ4E_COMP_STR_LEN] = {
+const char *lz4e_comp_str[LZ4E_COMP_TYPE_COUNT] = {
 	"cont",
 	"vect",
 	"strm",

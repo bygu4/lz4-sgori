@@ -19,8 +19,10 @@ DECOMPRESS_OBJ := $(OUTPUT_LIB)/$(DECOMPRESS_NAME).ko
 BDEV_OBJ := $(OUTPUT_BDEV)/$(BDEV_NAME).ko
 
 TEST_ALL := ./test/test_all.sh
+TEST_FAST := ./test/bash_tests/test_all.sh
+TEST_FIO := ./test/fio_tests/test_all.sh
 
-# ---------------- All, lib and block dev----------------
+# ---------------- All, lib and block dev ----------------
 
 .PHONY: all
 all:
@@ -112,3 +114,11 @@ bdev_reinsert:
 .PHONY: test
 test:
 	$(MAKE) && $(TEST_ALL)
+
+.PHONY: test_fast
+test_fast:
+	$(MAKE) && $(TEST_FAST)
+
+.PHONY: test_fio
+test_fio:
+	$(MAKE) && $(TEST_FIO)
