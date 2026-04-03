@@ -53,6 +53,7 @@ typedef struct {
 
 	unsigned int comp_size;
 	unsigned int decomp_size;
+	unsigned int mem_usage;
 	int acceleration;
 } LZ4E_ALIGN_64 lz4e_chunk_t;
 

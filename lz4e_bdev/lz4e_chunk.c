@@ -354,6 +354,8 @@ static int lz4e_chunk_init_cont(void *chunk_ptr, struct bio *src_bio,
 		break;
 	}
 
+	chunk->mem_usage = internal->src.buf_size + internal->dst.buf_size +
+			   LZ4_MEM_COMPRESS;
 	chunk->copy_time = copy_time;
 
 	LZ4E_PR_DEBUG("cont: initialized chunk");
@@ -519,7 +521,9 @@ lz4e_chunk_alloc_vect(struct bio *orig_bio, struct lz4e_under_dev *under_dev,
 		struct bio_vec bvec;
 		struct bvec_iter iter;
 
+		internal->dst_size = 0;
 		ibuf = 0;
+
 		bio_for_each_segment (bvec, orig_bio, iter) {
 			size_t src_size = bvec.bv_len;
 			size_t dst_size = LZ4_COMPRESSBOUND(src_size);
@@ -537,6 +541,7 @@ lz4e_chunk_alloc_vect(struct bio *orig_bio, struct lz4e_under_dev *under_dev,
 			internal->srcs[ibuf].data_size = src_size;
 			internal->dsts[ibuf].data = dst_data;
 			internal->dsts[ibuf].buf_size = dst_size;
+			internal->dst_size += dst_size;
 
 			ibuf++;
 		}
@@ -569,6 +574,7 @@ static int lz4e_chunk_init_vect(void *chunk_ptr, struct bio *src_bio,
 	/* save initial iter in case of read */
 	internal->src_iter = src_bio->bi_iter;
 
+	chunk->mem_usage = internal->dst_size + LZ4_MEM_COMPRESS;
 	chunk->copy_time = ktime_set(0, 0);
 
 	LZ4E_PR_DEBUG("vect: initialized chunk");
@@ -728,6 +734,7 @@ static int lz4e_chunk_init_extd(void *chunk_ptr, struct bio *src_bio,
 		return ret;
 	}
 
+	chunk->mem_usage = internal->dst_buf.buf_size + LZ4E_MEM_COMPRESS;
 	chunk->copy_time = ktime_set(0, 0);
 
 	LZ4E_PR_DEBUG("extd: initialized chunk");

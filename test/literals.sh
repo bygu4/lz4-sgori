@@ -13,9 +13,13 @@ export PARAM_STATS_RESET="$BDEV_PARAMETERS"/stats_reset
 
 export PARAM_STATS_R_REQS_TOTAL="$BDEV_PARAMETERS"/stats_r_reqs_total
 export PARAM_STATS_R_REQS_FAILED="$BDEV_PARAMETERS"/stats_r_reqs_failed
+export PARAM_STATS_R_VECS="$BDEV_PARAMETERS"/stats_r_vecs
+export PARAM_STATS_R_MIN_VEC="$BDEV_PARAMETERS"/stats_r_min_vec
+export PARAM_STATS_R_MAX_VEC="$BDEV_PARAMETERS"/stats_r_max_vec
 export PARAM_STATS_R_SEGMENTS="$BDEV_PARAMETERS"/stats_r_segments
 export PARAM_STATS_R_DECOMP_SIZE="$BDEV_PARAMETERS"/stats_r_decomp_size
 export PARAM_STATS_R_COMP_SIZE="$BDEV_PARAMETERS"/stats_r_comp_size
+export PARAM_STATS_R_MEM_USAGE="$BDEV_PARAMETERS"/stats_r_mem_usage
 export PARAM_STATS_R_COPY_NS="$BDEV_PARAMETERS"/stats_r_copy_ns
 export PARAM_STATS_R_COMP_NS="$BDEV_PARAMETERS"/stats_r_comp_ns
 export PARAM_STATS_R_DECOMP_NS="$BDEV_PARAMETERS"/stats_r_decomp_ns
@@ -23,9 +27,13 @@ export PARAM_STATS_R_TOTAL_NS="$BDEV_PARAMETERS"/stats_r_total_ns
 
 export PARAM_STATS_W_REQS_TOTAL="$BDEV_PARAMETERS"/stats_w_reqs_total
 export PARAM_STATS_W_REQS_FAILED="$BDEV_PARAMETERS"/stats_w_reqs_failed
+export PARAM_STATS_W_VECS="$BDEV_PARAMETERS"/stats_w_vecs
+export PARAM_STATS_W_MIN_VEC="$BDEV_PARAMETERS"/stats_w_min_vec
+export PARAM_STATS_W_MAX_VEC="$BDEV_PARAMETERS"/stats_w_max_vec
 export PARAM_STATS_W_SEGMENTS="$BDEV_PARAMETERS"/stats_w_segments
 export PARAM_STATS_W_DECOMP_SIZE="$BDEV_PARAMETERS"/stats_w_decomp_size
 export PARAM_STATS_W_COMP_SIZE="$BDEV_PARAMETERS"/stats_w_comp_size
+export PARAM_STATS_W_MEM_USAGE="$BDEV_PARAMETERS"/stats_w_mem_usage
 export PARAM_STATS_W_COPY_NS="$BDEV_PARAMETERS"/stats_w_copy_ns
 export PARAM_STATS_W_COMP_NS="$BDEV_PARAMETERS"/stats_w_comp_ns
 export PARAM_STATS_W_DECOMP_NS="$BDEV_PARAMETERS"/stats_w_decomp_ns

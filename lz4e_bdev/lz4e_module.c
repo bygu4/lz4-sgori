@@ -159,7 +159,7 @@ static int lz4e_get_acceleration(char *buf, const struct kernel_param *kpar)
 }
 LZ4E_CB_R(lz4e_acceleration_r, lz4e_get_acceleration);
 
-/* --------------------------- resetting stats ---------------------------- */
+/* ---------------------------- I/O statistics ---------------------------- */
 
 static int lz4e_reset_stats(const char *arg, const struct kernel_param *kpar)
 {
@@ -171,146 +171,74 @@ static int lz4e_reset_stats(const char *arg, const struct kernel_param *kpar)
 }
 LZ4E_CB_W_IF_DEV(lz4e_stats_reset_w, lz4e_reset_stats, lzmod);
 
-/* ------------------------ individual read stats ------------------------- */
+LZ4E_STATS_R_GETTER(lz4e_stats_r_reqs_total_r, reqs_total, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_reqs_failed_r, reqs_failed, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_min_vec_r, min_vec, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_max_vec_r, max_vec, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_vecs_r, vecs, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_segments_r, segments, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_decomp_size_r, decomp_size, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_comp_size_r, comp_size, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_mem_usage_r, mem_usage, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_copy_ns_r, copy_ns, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_comp_ns_r, comp_ns, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_decomp_ns_r, decomp_ns, lzmod);
+LZ4E_STATS_R_GETTER(lz4e_stats_r_total_ns_r, total_ns, lzmod);
 
-static int lz4e_get_r_reqs_total(char *buf, const struct kernel_param *kpar)
-{
-	u64 reqs_total =
-		(u64)atomic64_read(&lzmod.lzdev->read_stats->reqs_total);
-	return sysfs_emit(buf, "%llu\n", reqs_total);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_reqs_total_r, lz4e_get_r_reqs_total, lzmod);
-
-static int lz4e_get_r_reqs_failed(char *buf, const struct kernel_param *kpar)
-{
-	u64 reqs_failed =
-		(u64)atomic64_read(&lzmod.lzdev->read_stats->reqs_failed);
-	return sysfs_emit(buf, "%llu\n", reqs_failed);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_reqs_failed_r, lz4e_get_r_reqs_failed, lzmod);
-
-static int lz4e_get_r_segments(char *buf, const struct kernel_param *kpar)
-{
-	u64 segments = (u64)atomic64_read(&lzmod.lzdev->read_stats->segments);
-	return sysfs_emit(buf, "%llu\n", segments);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_segments_r, lz4e_get_r_segments, lzmod);
-
-static int lz4e_get_r_decomp_size(char *buf, const struct kernel_param *kpar)
-{
-	u64 decomp_size =
-		(u64)atomic64_read(&lzmod.lzdev->read_stats->decomp_size);
-	return sysfs_emit(buf, "%llu\n", decomp_size);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_decomp_size_r, lz4e_get_r_decomp_size, lzmod);
-
-static int lz4e_get_r_comp_size(char *buf, const struct kernel_param *kpar)
-{
-	u64 comp_size = (u64)atomic64_read(&lzmod.lzdev->read_stats->comp_size);
-	return sysfs_emit(buf, "%llu\n", comp_size);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_comp_size_r, lz4e_get_r_comp_size, lzmod);
-
-static int lz4e_get_r_copy_ns(char *buf, const struct kernel_param *kpar)
-{
-	u64 copy_ns = (u64)atomic64_read(&lzmod.lzdev->read_stats->copy_ns);
-	return sysfs_emit(buf, "%llu\n", copy_ns);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_copy_ns_r, lz4e_get_r_copy_ns, lzmod);
-
-static int lz4e_get_r_comp_ns(char *buf, const struct kernel_param *kpar)
-{
-	u64 comp_ns = (u64)atomic64_read(&lzmod.lzdev->read_stats->comp_ns);
-	return sysfs_emit(buf, "%llu\n", comp_ns);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_comp_ns_r, lz4e_get_r_comp_ns, lzmod);
-
-static int lz4e_get_r_decomp_ns(char *buf, const struct kernel_param *kpar)
-{
-	u64 decomp_ns = (u64)atomic64_read(&lzmod.lzdev->read_stats->decomp_ns);
-	return sysfs_emit(buf, "%llu\n", decomp_ns);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_decomp_ns_r, lz4e_get_r_decomp_ns, lzmod);
-
-static int lz4e_get_r_total_ns(char *buf, const struct kernel_param *kpar)
-{
-	u64 total_ns = (u64)atomic64_read(&lzmod.lzdev->read_stats->total_ns);
-	return sysfs_emit(buf, "%llu\n", total_ns);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_r_total_ns_r, lz4e_get_r_total_ns, lzmod);
-
-/* ------------------------ individual write stats ------------------------ */
-
-static int lz4e_get_w_reqs_total(char *buf, const struct kernel_param *kpar)
-{
-	u64 reqs_total =
-		(u64)atomic64_read(&lzmod.lzdev->write_stats->reqs_total);
-	return sysfs_emit(buf, "%llu\n", reqs_total);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_reqs_total_r, lz4e_get_w_reqs_total, lzmod);
-
-static int lz4e_get_w_reqs_failed(char *buf, const struct kernel_param *kpar)
-{
-	u64 reqs_failed =
-		(u64)atomic64_read(&lzmod.lzdev->write_stats->reqs_failed);
-	return sysfs_emit(buf, "%llu\n", reqs_failed);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_reqs_failed_r, lz4e_get_w_reqs_failed, lzmod);
-
-static int lz4e_get_w_segments(char *buf, const struct kernel_param *kpar)
-{
-	u64 segments = (u64)atomic64_read(&lzmod.lzdev->write_stats->segments);
-	return sysfs_emit(buf, "%llu\n", segments);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_segments_r, lz4e_get_w_segments, lzmod);
-
-static int lz4e_get_w_decomp_size(char *buf, const struct kernel_param *kpar)
-{
-	u64 decomp_size =
-		(u64)atomic64_read(&lzmod.lzdev->write_stats->decomp_size);
-	return sysfs_emit(buf, "%llu\n", decomp_size);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_decomp_size_r, lz4e_get_w_decomp_size, lzmod);
-
-static int lz4e_get_w_comp_size(char *buf, const struct kernel_param *kpar)
-{
-	u64 comp_size =
-		(u64)atomic64_read(&lzmod.lzdev->write_stats->comp_size);
-	return sysfs_emit(buf, "%llu\n", comp_size);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_comp_size_r, lz4e_get_w_comp_size, lzmod);
-
-static int lz4e_get_w_copy_ns(char *buf, const struct kernel_param *kpar)
-{
-	u64 copy_ns = (u64)atomic64_read(&lzmod.lzdev->write_stats->copy_ns);
-	return sysfs_emit(buf, "%llu\n", copy_ns);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_copy_ns_r, lz4e_get_w_copy_ns, lzmod);
-
-static int lz4e_get_w_comp_ns(char *buf, const struct kernel_param *kpar)
-{
-	u64 comp_ns = (u64)atomic64_read(&lzmod.lzdev->write_stats->comp_ns);
-	return sysfs_emit(buf, "%llu\n", comp_ns);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_comp_ns_r, lz4e_get_w_comp_ns, lzmod);
-
-static int lz4e_get_w_decomp_ns(char *buf, const struct kernel_param *kpar)
-{
-	u64 decomp_ns =
-		(u64)atomic64_read(&lzmod.lzdev->write_stats->decomp_ns);
-	return sysfs_emit(buf, "%llu\n", decomp_ns);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_decomp_ns_r, lz4e_get_w_decomp_ns, lzmod);
-
-static int lz4e_get_w_total_ns(char *buf, const struct kernel_param *kpar)
-{
-	u64 total_ns = (u64)atomic64_read(&lzmod.lzdev->write_stats->total_ns);
-	return sysfs_emit(buf, "%llu\n", total_ns);
-}
-LZ4E_CB_R_IF_DEV(lz4e_stats_w_total_ns_r, lz4e_get_w_total_ns, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_reqs_total_r, reqs_total, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_reqs_failed_r, reqs_failed, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_min_vec_r, min_vec, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_max_vec_r, max_vec, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_vecs_r, vecs, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_segments_r, segments, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_decomp_size_r, decomp_size, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_comp_size_r, comp_size, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_mem_usage_r, mem_usage, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_copy_ns_r, copy_ns, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_comp_ns_r, comp_ns, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_decomp_ns_r, decomp_ns, lzmod);
+LZ4E_STATS_W_GETTER(lz4e_stats_w_total_ns_r, total_ns, lzmod);
 
 // Callbacks can have unused parameters
 // NOLINTEND(misc-unused-parameters)
+
+/* --------------------------- module param ops --------------------------- */
+
+LZ4E_PARAM_OPS(lz4e_mapper_ops, lz4e_mapper_w, lz4e_mapper_r);
+LZ4E_PARAM_OPS(lz4e_unmapper_ops, lz4e_unmapper_w, lz4e_unmapper_r);
+
+LZ4E_PARAM_OPS(lz4e_comp_type_ops, lz4e_comp_type_w, lz4e_comp_type_r);
+LZ4E_PARAM_OPS(lz4e_acceleration_ops, lz4e_acceleration_w, lz4e_acceleration_r);
+
+LZ4E_PARAM_OPS(lz4e_stats_reset_ops, lz4e_stats_reset_w, NULL);
+
+LZ4E_PARAM_OPS(lz4e_stats_r_reqs_total_ops, NULL, lz4e_stats_r_reqs_total_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_reqs_failed_ops, NULL, lz4e_stats_r_reqs_failed_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_min_vec_ops, NULL, lz4e_stats_r_min_vec_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_max_vec_ops, NULL, lz4e_stats_r_max_vec_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_vecs_ops, NULL, lz4e_stats_r_vecs_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_segments_ops, NULL, lz4e_stats_r_segments_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_decomp_size_ops, NULL, lz4e_stats_r_decomp_size_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_comp_size_ops, NULL, lz4e_stats_r_comp_size_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_mem_usage_ops, NULL, lz4e_stats_r_mem_usage_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_copy_ns_ops, NULL, lz4e_stats_r_copy_ns_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_comp_ns_ops, NULL, lz4e_stats_r_comp_ns_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_decomp_ns_ops, NULL, lz4e_stats_r_decomp_ns_r);
+LZ4E_PARAM_OPS(lz4e_stats_r_total_ns_ops, NULL, lz4e_stats_r_total_ns_r);
+
+LZ4E_PARAM_OPS(lz4e_stats_w_reqs_total_ops, NULL, lz4e_stats_w_reqs_total_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_reqs_failed_ops, NULL, lz4e_stats_w_reqs_failed_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_min_vec_ops, NULL, lz4e_stats_w_min_vec_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_max_vec_ops, NULL, lz4e_stats_w_max_vec_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_vecs_ops, NULL, lz4e_stats_w_vecs_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_segments_ops, NULL, lz4e_stats_w_segments_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_decomp_size_ops, NULL, lz4e_stats_w_decomp_size_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_comp_size_ops, NULL, lz4e_stats_w_comp_size_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_mem_usage_ops, NULL, lz4e_stats_w_mem_usage_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_copy_ns_ops, NULL, lz4e_stats_w_copy_ns_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_comp_ns_ops, NULL, lz4e_stats_w_comp_ns_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_decomp_ns_ops, NULL, lz4e_stats_w_decomp_ns_r);
+LZ4E_PARAM_OPS(lz4e_stats_w_total_ns_ops, NULL, lz4e_stats_w_total_ns_r);
 
 /* --------------------------- module init/exit --------------------------- */
 
@@ -340,123 +268,74 @@ static void __exit lz4e_module_exit(void)
 	LZ4E_PR_INFO("module unloaded successfully");
 }
 
-/* --------------------------- module param ops --------------------------- */
-
-LZ4E_PARAM_OPS(lz4e_mapper_ops, lz4e_mapper_w, lz4e_mapper_r);
-LZ4E_PARAM_OPS(lz4e_unmapper_ops, lz4e_unmapper_w, lz4e_unmapper_r);
-LZ4E_PARAM_OPS(lz4e_comp_type_ops, lz4e_comp_type_w, lz4e_comp_type_r);
-LZ4E_PARAM_OPS(lz4e_acceleration_ops, lz4e_acceleration_w, lz4e_acceleration_r);
-
-LZ4E_PARAM_OPS(lz4e_stats_reset_ops, lz4e_stats_reset_w, NULL);
-
-LZ4E_PARAM_OPS(lz4e_stats_r_reqs_total_ops, NULL, lz4e_stats_r_reqs_total_r);
-LZ4E_PARAM_OPS(lz4e_stats_r_reqs_failed_ops, NULL, lz4e_stats_r_reqs_failed_r);
-LZ4E_PARAM_OPS(lz4e_stats_r_segments_ops, NULL, lz4e_stats_r_segments_r);
-LZ4E_PARAM_OPS(lz4e_stats_r_decomp_size_ops, NULL, lz4e_stats_r_decomp_size_r);
-LZ4E_PARAM_OPS(lz4e_stats_r_comp_size_ops, NULL, lz4e_stats_r_comp_size_r);
-LZ4E_PARAM_OPS(lz4e_stats_r_copy_ns_ops, NULL, lz4e_stats_r_copy_ns_r);
-LZ4E_PARAM_OPS(lz4e_stats_r_comp_ns_ops, NULL, lz4e_stats_r_comp_ns_r);
-LZ4E_PARAM_OPS(lz4e_stats_r_decomp_ns_ops, NULL, lz4e_stats_r_decomp_ns_r);
-LZ4E_PARAM_OPS(lz4e_stats_r_total_ns_ops, NULL, lz4e_stats_r_total_ns_r);
-
-LZ4E_PARAM_OPS(lz4e_stats_w_reqs_total_ops, NULL, lz4e_stats_w_reqs_total_r);
-LZ4E_PARAM_OPS(lz4e_stats_w_reqs_failed_ops, NULL, lz4e_stats_w_reqs_failed_r);
-LZ4E_PARAM_OPS(lz4e_stats_w_segments_ops, NULL, lz4e_stats_w_segments_r);
-LZ4E_PARAM_OPS(lz4e_stats_w_decomp_size_ops, NULL, lz4e_stats_w_decomp_size_r);
-LZ4E_PARAM_OPS(lz4e_stats_w_comp_size_ops, NULL, lz4e_stats_w_comp_size_r);
-LZ4E_PARAM_OPS(lz4e_stats_w_copy_ns_ops, NULL, lz4e_stats_w_copy_ns_r);
-LZ4E_PARAM_OPS(lz4e_stats_w_comp_ns_ops, NULL, lz4e_stats_w_comp_ns_r);
-LZ4E_PARAM_OPS(lz4e_stats_w_decomp_ns_ops, NULL, lz4e_stats_w_decomp_ns_r);
-LZ4E_PARAM_OPS(lz4e_stats_w_total_ns_ops, NULL, lz4e_stats_w_total_ns_r);
-
 /* --------------------------- register module ---------------------------- */
 
-module_param_cb(mapper, &lz4e_mapper_ops, NULL, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(mapper, "Map to existing block device");
+LZ4E_MODULE_PARAM(mapper, lz4e_mapper_ops, S_IRUGO | S_IWUSR,
+		  "Map to existing block device");
+LZ4E_MODULE_PARAM(unmapper, lz4e_unmapper_ops, S_IRUGO | S_IWUSR,
+		  "Unmap from existing block device");
 
-module_param_cb(unmapper, &lz4e_unmapper_ops, NULL, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(unmapper, "Unmap from existing block device");
+LZ4E_MODULE_PARAM(comp_type, lz4e_comp_type_ops, S_IRUGO | S_IWUSR,
+		  "Path for compression (cont, vect, strm, extd)");
+LZ4E_MODULE_PARAM(acceleration, lz4e_acceleration_ops, S_IRUGO | S_IWUSR,
+		  "Acceleration factor for compression");
 
-module_param_cb(comp_type, &lz4e_comp_type_ops, NULL, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(comp_type, "Path for compression (cont, vect, strm, extd)");
+LZ4E_MODULE_PARAM(stats_reset, lz4e_stats_reset_ops, S_IWUSR,
+		  "Reset all request statistics");
 
-module_param_cb(acceleration, &lz4e_acceleration_ops, NULL, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(acceleration, "Acceleration factor for compression");
+LZ4E_MODULE_PARAM(stats_r_reqs_total, lz4e_stats_r_reqs_total_ops, S_IRUGO,
+		  "Total number of read requests");
+LZ4E_MODULE_PARAM(stats_r_reqs_failed, lz4e_stats_r_reqs_failed_ops, S_IRUGO,
+		  "Number of failed read requests");
+LZ4E_MODULE_PARAM(stats_r_min_vec, lz4e_stats_r_min_vec_ops, S_IRUGO,
+		  "Minimal size in bytes of I/O vector for read");
+LZ4E_MODULE_PARAM(stats_r_max_vec, lz4e_stats_r_max_vec_ops, S_IRUGO,
+		  "Maximum size in bytes of I/O vector for read");
+LZ4E_MODULE_PARAM(stats_r_vecs, lz4e_stats_r_vecs_ops, S_IRUGO,
+		  "Number of multi-page I/O vectors read from");
+LZ4E_MODULE_PARAM(stats_r_segments, lz4e_stats_r_segments_ops, S_IRUGO,
+		  "Number of single-page segments read from");
+LZ4E_MODULE_PARAM(stats_r_decomp_size, lz4e_stats_r_decomp_size_ops, S_IRUGO,
+		  "Total size in bytes of read data before compression");
+LZ4E_MODULE_PARAM(stats_r_comp_size, lz4e_stats_r_comp_size_ops, S_IRUGO,
+		  "Total size in bytes of read data after compression");
+LZ4E_MODULE_PARAM(stats_r_mem_usage, lz4e_stats_r_mem_usage_ops, S_IRUGO,
+		  "Memory used for running compression for read");
+LZ4E_MODULE_PARAM(stats_r_copy_ns, lz4e_stats_r_copy_ns_ops, S_IRUGO,
+		  "Time elapsed during data copying for read in nanoseconds");
+LZ4E_MODULE_PARAM(stats_r_comp_ns, lz4e_stats_r_comp_ns_ops, S_IRUGO,
+		  "Time elapsed during compression for read in nanoseconds");
+LZ4E_MODULE_PARAM(stats_r_decomp_ns, lz4e_stats_r_decomp_ns_ops, S_IRUGO,
+		  "Time elapsed during decompression for read in nanoseconds");
+LZ4E_MODULE_PARAM(stats_r_total_ns, lz4e_stats_r_total_ns_ops, S_IRUGO,
+		  "Total time elapsed during read in nanoseconds");
 
-module_param_cb(stats_reset, &lz4e_stats_reset_ops, NULL, S_IWUSR);
-MODULE_PARM_DESC(stats_reset, "Reset all request statistics");
-
-module_param_cb(stats_r_reqs_total, &lz4e_stats_r_reqs_total_ops, NULL,
-		S_IRUGO);
-MODULE_PARM_DESC(stats_r_reqs_total, "Total number of read requests");
-
-module_param_cb(stats_r_reqs_failed, &lz4e_stats_r_reqs_failed_ops, NULL,
-		S_IRUGO);
-MODULE_PARM_DESC(stats_r_reqs_failed, "Number of failed read requests");
-
-module_param_cb(stats_r_segments, &lz4e_stats_r_segments_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_r_segments, "Number of single-page segments read from");
-
-module_param_cb(stats_r_decomp_size, &lz4e_stats_r_decomp_size_ops, NULL,
-		S_IRUGO);
-MODULE_PARM_DESC(stats_r_decomp_size,
-		 "Total size in bytes of read data before compression");
-
-module_param_cb(stats_r_comp_size, &lz4e_stats_r_comp_size_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_r_comp_size,
-		 "Total size in bytes of read data after compression");
-
-module_param_cb(stats_r_copy_ns, &lz4e_stats_r_copy_ns_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_r_copy_ns,
-		 "Time elapsed during data copying for read in nanoseconds");
-
-module_param_cb(stats_r_comp_ns, &lz4e_stats_r_comp_ns_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_r_comp_ns,
-		 "Time elapsed during compression for read in nanoseconds");
-
-module_param_cb(stats_r_decomp_ns, &lz4e_stats_r_decomp_ns_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_r_decomp_ns,
-		 "Time elapsed during decompression for read in nanoseconds");
-
-module_param_cb(stats_r_total_ns, &lz4e_stats_r_total_ns_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_r_total_ns,
-		 "Total time elapsed during read in nanoseconds");
-
-module_param_cb(stats_w_reqs_total, &lz4e_stats_w_reqs_total_ops, NULL,
-		S_IRUGO);
-MODULE_PARM_DESC(stats_w_reqs_total, "Total number of write requests");
-
-module_param_cb(stats_w_reqs_failed, &lz4e_stats_w_reqs_failed_ops, NULL,
-		S_IRUGO);
-MODULE_PARM_DESC(stats_w_reqs_failed, "Number of failed write requests");
-
-module_param_cb(stats_w_segments, &lz4e_stats_w_segments_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_w_segments, "Number of single-page segments written to");
-
-module_param_cb(stats_w_decomp_size, &lz4e_stats_w_decomp_size_ops, NULL,
-		S_IRUGO);
-MODULE_PARM_DESC(stats_w_decomp_size,
-		 "Total size in bytes of written data before compression");
-
-module_param_cb(stats_w_comp_size, &lz4e_stats_w_comp_size_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_w_comp_size,
-		 "Total size in bytes of written data after compression");
-
-module_param_cb(stats_w_copy_ns, &lz4e_stats_w_copy_ns_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_w_copy_ns,
-		 "Time elapsed during data copying for write in nanoseconds");
-
-module_param_cb(stats_w_comp_ns, &lz4e_stats_w_comp_ns_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_w_comp_ns,
-		 "Time elapsed during compression for write in nanoseconds");
-
-module_param_cb(stats_w_decomp_ns, &lz4e_stats_w_decomp_ns_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_w_decomp_ns,
-		 "Time elapsed during decompression for write in nanoseconds");
-
-module_param_cb(stats_w_total_ns, &lz4e_stats_w_total_ns_ops, NULL, S_IRUGO);
-MODULE_PARM_DESC(stats_w_total_ns,
-		 "Total time elapsed during write in nanoseconds");
+LZ4E_MODULE_PARAM(stats_w_reqs_total, lz4e_stats_w_reqs_total_ops, S_IRUGO,
+		  "Total number of write requests");
+LZ4E_MODULE_PARAM(stats_w_reqs_failed, lz4e_stats_w_reqs_failed_ops, S_IRUGO,
+		  "Number of failed write requests");
+LZ4E_MODULE_PARAM(stats_w_min_vec, lz4e_stats_w_min_vec_ops, S_IRUGO,
+		  "Minimal size in bytes of I/O vector for write");
+LZ4E_MODULE_PARAM(stats_w_max_vec, lz4e_stats_w_max_vec_ops, S_IRUGO,
+		  "Maximum size in bytes of I/O vector for write");
+LZ4E_MODULE_PARAM(stats_w_vecs, lz4e_stats_w_vecs_ops, S_IRUGO,
+		  "Number of multi-page I/O vectors written to");
+LZ4E_MODULE_PARAM(stats_w_segments, lz4e_stats_w_segments_ops, S_IRUGO,
+		  "Number of single-page segments written to");
+LZ4E_MODULE_PARAM(stats_w_decomp_size, lz4e_stats_w_decomp_size_ops, S_IRUGO,
+		  "Total size in bytes of written data before compression");
+LZ4E_MODULE_PARAM(stats_w_comp_size, lz4e_stats_w_comp_size_ops, S_IRUGO,
+		  "Total size in bytes of written data after compression");
+LZ4E_MODULE_PARAM(stats_w_mem_usage, lz4e_stats_w_mem_usage_ops, S_IRUGO,
+		  "Memory used for running compression for write");
+LZ4E_MODULE_PARAM(stats_w_copy_ns, lz4e_stats_w_copy_ns_ops, S_IRUGO,
+		  "Time elapsed during data copying for write in nanoseconds");
+LZ4E_MODULE_PARAM(stats_w_comp_ns, lz4e_stats_w_comp_ns_ops, S_IRUGO,
+		  "Time elapsed during compression for write in nanoseconds");
+LZ4E_MODULE_PARAM(stats_w_decomp_ns, lz4e_stats_w_decomp_ns_ops, S_IRUGO,
+		  "Time elapsed during decompression for write in nanoseconds");
+LZ4E_MODULE_PARAM(stats_w_total_ns, lz4e_stats_w_total_ns_ops, S_IRUGO,
+		  "Total time elapsed during write in nanoseconds");
 
 module_init(lz4e_module_init);
 module_exit(lz4e_module_exit);

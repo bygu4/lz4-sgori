@@ -19,9 +19,14 @@ struct lz4e_stats {
 	atomic64_t reqs_total;	/* how many reqs submitted */
 	atomic64_t reqs_failed; /* how many reqs failed */
 
+	atomic64_t min_vec; /* min size of multi-page vec */
+	atomic64_t max_vec; /* max size of multi-page vec */
+	atomic64_t vecs;    /* number of multi-page vecs */
+
 	atomic64_t segments;	/* number of single-page segments */
 	atomic64_t decomp_size; /* size of decompressed data */
 	atomic64_t comp_size;	/* size of compressed data */
+	atomic64_t mem_usage;	/* memory usage in bytes */
 
 	atomic64_t copy_ns;   /* time for data copying */
 	atomic64_t comp_ns;   /* time for compression */

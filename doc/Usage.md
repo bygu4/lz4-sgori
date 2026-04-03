@@ -129,13 +129,18 @@ each successive value provides roughly +~3% to speed. By default, the accelerati
 Statistics are collected for read and write separately. At the moment, they consist of:
 - `reqs_total` — total amount of I/O requests;
 - `reqs_failed` — number of failed requests;
+- `min_vec` — minimum size in bytes of processed multi-page I/O vector;
+- `max_vec` — maximum size in bytes of processed multi-page I/O vector;
+- `vecs` — number of processed multi-page I/O vectors;
 - `segments` — number of processed single-page segments;
 - `decomp_size` — total size of data before compression in bytes;
 - `comp_size` — total size of data after compression in bytes;
+- `mem_usage` — size in bytes of memory used for running compression;
 - `copy_ns` — time spent copying data in nanoseconds (can be zero depending on `comp_type`);
 - `comp_ns` — time elapsed during compression in nanoseconds;
 - `decomp_ns` — time elapsed during decompression in nanoseconds;
 - `total_ns` — total time elapsed during I/O processing in nanoseconds (including work of the underlying device).
+Parameters for read and write operations are prefixed with `stats_r_` and `stats_w_` respectively.
 
 All stats can be reset using `stats_reset` parameter:
 ```bash

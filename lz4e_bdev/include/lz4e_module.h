@@ -96,10 +96,34 @@ static inline int lz4e_cb_r_if_dev(int (*func)(char *buf,
 		return lz4e_cb_r_if_dev((func), &(lzmod), buf, kpar);       \
 	}
 
+#define LZ4E_STATS_R_GETTER(name, stat, lzmod)                                \
+	static int __lz4e_get_r_##stat(char *buf,                             \
+				       const struct kernel_param *kpar)       \
+	{                                                                     \
+		u64(stat) =                                                   \
+			(u64)atomic64_read(&(lzmod).lzdev->read_stats->stat); \
+		return sysfs_emit(buf, "%llu\n", (stat));                     \
+	}                                                                     \
+	LZ4E_CB_R_IF_DEV((name), __lz4e_get_r_##stat, (lzmod))
+
+#define LZ4E_STATS_W_GETTER(name, stat, lzmod)                                 \
+	static int __lz4e_get_w_##stat(char *buf,                              \
+				       const struct kernel_param *kpar)        \
+	{                                                                      \
+		u64(stat) =                                                    \
+			(u64)atomic64_read(&(lzmod).lzdev->write_stats->stat); \
+		return sysfs_emit(buf, "%llu\n", (stat));                      \
+	}                                                                      \
+	LZ4E_CB_R_IF_DEV((name), __lz4e_get_w_##stat, (lzmod))
+
 #define LZ4E_PARAM_OPS(name, setter, getter)           \
 	static const struct kernel_param_ops(name) = { \
 		.set = (setter),                       \
 		.get = (getter),                       \
 	}
+
+#define LZ4E_MODULE_PARAM(name, ops, perm, desc)     \
+	module_param_cb(name, &(ops), NULL, (perm)); \
+	MODULE_PARM_DESC(name, #desc)
 
 #endif
