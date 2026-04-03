@@ -37,6 +37,7 @@ struct lz4e_chunk_vect {
 	struct lz4e_buffer *dsts;
 	void *wrkmem;
 	struct bvec_iter src_iter;
+	unsigned int dst_size;
 	unsigned int buf_cnt;
 } LZ4E_ALIGN_64;
 

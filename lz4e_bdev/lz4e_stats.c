@@ -7,8 +7,11 @@
 
 #include <linux/bio.h>
 #include <linux/blk_types.h>
+#include <linux/bvec.h>
 #include <linux/fortify-string.h>
 #include <linux/ktime.h>
+#include <linux/limits.h>
+#include <linux/minmax.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
 #include <linux/types.h>
@@ -50,14 +53,36 @@ void lz4e_stats_update(struct lz4e_stats *lzstats, struct bio *bio,
 		return;
 	}
 
-	atomic64_add((s64)chunk->comp_size, &lzstats->comp_size);
-	atomic64_add((s64)chunk->decomp_size, &lzstats->decomp_size);
 	atomic64_add((s64)bio_segments(bio), &lzstats->segments);
+	atomic64_add((s64)chunk->decomp_size, &lzstats->decomp_size);
+	atomic64_add((s64)chunk->comp_size, &lzstats->comp_size);
+	atomic64_add((s64)chunk->mem_usage, &lzstats->mem_usage);
 
 	atomic64_add(ktime_to_ns(chunk->copy_time), &lzstats->copy_ns);
 	atomic64_add(ktime_to_ns(chunk->comp_time), &lzstats->comp_ns);
 	atomic64_add(ktime_to_ns(chunk->decomp_time), &lzstats->decomp_ns);
 	atomic64_add(ktime_to_ns(chunk->total_time), &lzstats->total_ns);
+
+	{
+		u32 min_vec = atomic64_read(&lzstats->min_vec);
+		u32 max_vec = atomic64_read(&lzstats->max_vec);
+		u16 vecs = 0;
+		struct bio_vec bvec;
+		struct bvec_iter iter;
+
+		if (!min_vec)
+			min_vec = U32_MAX;
+
+		bio_for_each_bvec (bvec, bio, iter) {
+			min_vec = min_t(unsigned int, min_vec, bvec.bv_len);
+			max_vec = max_t(unsigned int, max_vec, bvec.bv_len);
+			vecs++;
+		}
+
+		atomic64_set(&lzstats->min_vec, min_vec);
+		atomic64_set(&lzstats->max_vec, max_vec);
+		atomic64_add(vecs, &lzstats->vecs);
+	}
 
 	LZ4E_PR_DEBUG("updated request stats");
 }
