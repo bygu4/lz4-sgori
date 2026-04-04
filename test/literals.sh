@@ -45,7 +45,7 @@ export DISK_SIZE_IN_KB=307200
 
 export TEST_FILES_DIR=test/test_files
 export FIO_TESTS_DIR=test/fio_tests
-export TEST_FILE_ACCELERATION="$TEST_FILES_DIR"/03.txt
+export TEST_FILE_ACCELERATION="$TEST_FILES_DIR"/html
 
 export TEMP_DIR=test/tmp
 export TEMP_FILE="$TEMP_DIR"/output
