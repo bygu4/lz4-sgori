@@ -251,6 +251,11 @@ static FORCE_INLINE U16 LZ4_read16(const void *ptr)
 	return get_unaligned((const U16 *)ptr);
 }
 
+static FORCE_INLINE U16 LZ4_readLE16(const void *memPtr)
+{
+	return get_unaligned_le16(memPtr);
+}
+
 static FORCE_INLINE U32 LZ4_read32(const void *ptr)
 {
 	return get_unaligned((const U32 *)ptr);
@@ -266,19 +271,19 @@ static FORCE_INLINE void LZ4_write16(void *memPtr, U16 value)
 	put_unaligned(value, (U16 *)memPtr);
 }
 
+static FORCE_INLINE void LZ4_writeLE16(void *memPtr, U16 value)
+{
+	return put_unaligned_le16(value, memPtr);
+}
+
 static FORCE_INLINE void LZ4_write32(void *memPtr, U32 value)
 {
 	put_unaligned(value, (U32 *)memPtr);
 }
 
-static FORCE_INLINE U16 LZ4_readLE16(const void *memPtr)
+static FORCE_INLINE void LZ4_writeArch(void *memPtr, size_t value)
 {
-	return get_unaligned_le16(memPtr);
-}
-
-static FORCE_INLINE void LZ4_writeLE16(void *memPtr, U16 value)
-{
-	return put_unaligned_le16(value, memPtr);
+	put_unaligned(value, (size_t *)memPtr);
 }
 
 /*
@@ -293,6 +298,34 @@ static FORCE_INLINE void LZ4_writeLE16(void *memPtr, U16 value)
 #define LZ4_memmove(dst, src, size) __builtin_memmove(dst, src, size)
 
 static FORCE_INLINE void LZ4_copy8(void *dst, const void *src)
+{
+	BYTE a = *(const BYTE *)src;
+
+	*(BYTE *)dst = a;
+}
+
+static FORCE_INLINE void LZ4_copy16(void *dst, const void *src)
+{
+	U16 a = get_unaligned((const U16 *)src);
+
+	put_unaligned(a, (U16 *)dst);
+}
+
+static FORCE_INLINE void LZ4_copy32(void *dst, const void *src)
+{
+	U32 a = get_unaligned((const U32 *)src);
+
+	put_unaligned(a, (U32 *)dst);
+}
+
+static FORCE_INLINE void LZ4_copyArch(void *dst, const void *src)
+{
+	size_t a = get_unaligned((const size_t *)src);
+
+	put_unaligned(a, (size_t *)dst);
+}
+
+static FORCE_INLINE void LZ4_copy64(void *dst, const void *src)
 {
 #if LZ4_ARCH64
 	U64 a = get_unaligned((const U64 *)src);
@@ -319,7 +352,7 @@ static FORCE_INLINE void LZ4_wildCopy(void *dstPtr,
 	BYTE *const e = (BYTE *)dstEnd;
 
 	do {
-		LZ4_copy8(d, s);
+		LZ4_copy64(d, s);
 		d += 8;
 		s += 8;
 	} while (d < e);
@@ -380,6 +413,34 @@ static FORCE_INLINE unsigned int LZ4_count(
  **************************************/
 #define LZ4E_toLE16 cpu_to_le16
 
+static FORCE_INLINE void LZ4E_memcpy(char *dst, const char *src, unsigned len)
+{
+	const char *end = dst + len;
+
+	for (; dst < end - (STEPSIZE - 1);) {
+		LZ4_copyArch(dst, src);
+		src += STEPSIZE;
+		dst += STEPSIZE;
+	}
+
+#if LZ4_ARCH64
+	if (dst < end - 3) {
+		LZ4_copy32(dst, src);
+		src += 4;
+		dst += 4;
+	}
+#endif
+
+	if (dst < end - 1) {
+		LZ4_copy16(dst, src);
+		src += 2;
+		dst += 2;
+	}
+
+	if (dst < end)
+		LZ4_copy8(dst, src);
+}
+
 static FORCE_INLINE void LZ4E_memcpy_from_bvec(char *to,
 		const struct bio_vec *from, const unsigned len,
 		const unsigned idx, LZ4E_stream_t_internal *dictPtr)
@@ -387,10 +448,10 @@ static FORCE_INLINE void LZ4E_memcpy_from_bvec(char *to,
 #ifdef LZ4E_PREMAP
 	unsigned baseIdx = dictPtr->srcBaseIdx;
 	char *addrFrom = dictPtr->srcAddrs[idx - baseIdx];
-	LZ4_memcpy(to, addrFrom + from->bv_offset, len);
+	LZ4E_memcpy(to, addrFrom + from->bv_offset, len);
 #else
 	char *addrFrom = kmap_local_page(from->bv_page);
-	LZ4_memcpy(to, addrFrom + from->bv_offset, len);
+	LZ4E_memcpy(to, addrFrom + from->bv_offset, len);
 	kunmap_local(addrFrom);
 #endif
 }
@@ -402,10 +463,10 @@ static FORCE_INLINE void LZ4E_memcpy_to_bvec(struct bio_vec *to,
 #ifdef LZ4E_PREMAP
 	unsigned baseIdx = dictPtr->dstBaseIdx;
 	char *addrTo = dictPtr->dstAddrs[idx - baseIdx];
-	LZ4_memcpy(addrTo + to->bv_offset, from, len);
+	LZ4E_memcpy(addrTo + to->bv_offset, from, len);
 #else
 	char *addrTo = kmap_local_page(to->bv_page);
-	LZ4_memcpy(addrTo + to->bv_offset, from, len);
+	LZ4E_memcpy(addrTo + to->bv_offset, from, len);
 #ifndef LZ4E_MULTIPAGE
 	flush_dcache_page(to->bv_page);
 #endif
@@ -423,11 +484,11 @@ static FORCE_INLINE void LZ4E_memcpy_btwn_bvecs(struct bio_vec *to,
 	unsigned baseIdxTo = dictPtr->dstBaseIdx;
 	char *addrFrom = dictPtr->srcAddrs[idxFrom - baseIdxFrom];
 	char *addrTo = dictPtr->dstAddrs[idxTo - baseIdxTo];
-	LZ4_memcpy(addrTo + to->bv_offset, addrFrom + from->bv_offset, len);
+	LZ4E_memcpy(addrTo + to->bv_offset, addrFrom + from->bv_offset, len);
 #else
 	char *addrFrom = kmap_local_page(from->bv_page);
 	char *addrTo = kmap_local_page(to->bv_page);
-	LZ4_memcpy(addrTo + to->bv_offset, addrFrom + from->bv_offset, len);
+	LZ4E_memcpy(addrTo + to->bv_offset, addrFrom + from->bv_offset, len);
 #ifndef LZ4E_MULTIPAGE
 	flush_dcache_page(to->bv_page);
 #endif
