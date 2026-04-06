@@ -38,6 +38,10 @@
 // TODO:(kogora)[f]: mind about LICENSE |^
 
 
+#include <linux/highmem.h>
+#include <linux/cacheflush.h>
+#include <linux/byteorder/generic.h>
+#include <linux/compiler.h>
 #include <linux/bio.h>
 #include <linux/bitops.h>
 #include <linux/bvec.h>
@@ -122,6 +126,45 @@ typedef uintptr_t uptrval;
 	     bvec_iter_advance_single((bio_vec), &(iter), \
 		mp_bvec_iter_len((bio_vec), (iter))))
 
+#define LZ4E_iter_advance_single bvec_iter_advance_single
+
+/*
+ * advance bvec iterator by given number of bytes
+ */
+static FORCE_INLINE void LZ4E_iter_advance(const struct bio_vec *bvecs,
+		struct bvec_iter *iter, unsigned bytes)
+{
+	unsigned idx = iter->bi_idx;
+
+	iter->bi_size -= bytes;
+	bytes += iter->bi_bvec_done;
+
+	while (bytes && bytes >= bvecs[idx].bv_len)
+		bytes -= bvecs[idx++].bv_len;
+
+	iter->bi_idx = idx;
+	iter->bi_bvec_done = bytes;
+}
+
+/*
+ * roll bvec iterator back by given number of bytes
+ */
+static FORCE_INLINE void LZ4E_iter_rollback(const struct bio_vec *bvecs,
+		struct bvec_iter *iter, unsigned bytes)
+{
+	unsigned idx = iter->bi_idx;
+	unsigned done = iter->bi_bvec_done;
+
+	while (bytes && bytes > done) {
+		bytes -= done;
+		done = bvecs[--idx].bv_len;
+	}
+
+	iter->bi_idx = idx;
+	iter->bi_size += bytes;
+	iter->bi_bvec_done = done - bytes;
+}
+
 /*
  * advance bvec iterator by exactly 1 byte
  */
@@ -131,11 +174,9 @@ static FORCE_INLINE void LZ4E_iter_advance1(const struct bio_vec *bvecs,
 	unsigned idx = iter->bi_idx;
 	unsigned done = iter->bi_bvec_done;
 
-	BUG_ON(iter->bi_size == 0);
-
 	done++;
 
-	if (done == bvecs[idx].bv_len) {
+	if (unlikely(done == bvecs[idx].bv_len)) {
 		idx++;
 		done = 0;
 	}
@@ -154,12 +195,8 @@ static FORCE_INLINE void LZ4E_iter_rollback1(const struct bio_vec *bvecs,
 	unsigned idx = iter->bi_idx;
 	unsigned done = iter->bi_bvec_done;
 
-	if (done == 0) {
-		BUG_ON(idx == 0);
-
-		idx--;
-		done = bvecs[idx].bv_len;
-	}
+	if (unlikely(done == 0))
+		done = bvecs[--idx].bv_len;
 
 	done--;
 
@@ -174,8 +211,18 @@ static FORCE_INLINE void LZ4E_advance(
 	U32 *pos,
 	const unsigned bytes)
 {
-	bvec_iter_advance(bvecs, iter, bytes);
+	LZ4E_iter_advance(bvecs, iter, bytes);
 	*pos += bytes;
+}
+
+static FORCE_INLINE void LZ4E_rollback(
+	const struct bio_vec *bvecs,
+	struct bvec_iter *iter,
+	U32 *pos,
+	const unsigned bytes)
+{
+	LZ4E_iter_rollback(bvecs, iter, bytes);
+	*pos -= bytes;
 }
 
 static FORCE_INLINE void LZ4E_advance1(
@@ -331,270 +378,282 @@ static FORCE_INLINE unsigned int LZ4_count(
 /*-************************************
  *	Extended memory management
  **************************************/
-static FORCE_INLINE void LZ4E_swap(char * const first, char * const second)
-{
-	char tmp = *first;
-	*first = *second;
-	*second = tmp;
-}
+#define LZ4E_toLE16 cpu_to_le16
 
-static FORCE_INLINE U16 LZ4E_toLE16(U16 value)
+static FORCE_INLINE void LZ4E_memcpy_from_bvec(char *to,
+		const struct bio_vec *from, const unsigned len,
+		const unsigned idx, LZ4E_stream_t_internal *dictPtr)
 {
-#if LZ4_LITTLE_ENDIAN
-	return value;
+#ifdef LZ4E_PREMAP
+	unsigned baseIdx = dictPtr->srcBaseIdx;
+	char *addrFrom = dictPtr->srcAddrs[idx - baseIdx];
+	LZ4_memcpy(to, addrFrom + from->bv_offset, len);
 #else
-	char *ptr = (char *)(&value);
-	LZ4E_swap(ptr, ptr + 1);
-	return value;
+	char *addrFrom = kmap_local_page(from->bv_page);
+	LZ4_memcpy(to, addrFrom + from->bv_offset, len);
+	kunmap_local(addrFrom);
 #endif
 }
 
-static FORCE_INLINE void LZ4E_memcpy_from_bvec(char *to,
-		const struct bio_vec *from, const size_t len)
-{
-	BUG_ON(len > from->bv_len || from->bv_offset + len > PAGE_SIZE);
-	memcpy_from_page(to, from->bv_page, from->bv_offset, len);
-}
-
 static FORCE_INLINE void LZ4E_memcpy_to_bvec(struct bio_vec *to,
-		const char *from, const size_t len)
+		const char *from, const unsigned len,
+		const unsigned idx, LZ4E_stream_t_internal *dictPtr)
 {
-	BUG_ON(len > to->bv_len || to->bv_offset + len > PAGE_SIZE);
-	memcpy_to_page(to->bv_page, to->bv_offset, from, len);
+#ifdef LZ4E_PREMAP
+	unsigned baseIdx = dictPtr->dstBaseIdx;
+	char *addrTo = dictPtr->dstAddrs[idx - baseIdx];
+	LZ4_memcpy(addrTo + to->bv_offset, from, len);
+#else
+	char *addrTo = kmap_local_page(to->bv_page);
+	LZ4_memcpy(addrTo + to->bv_offset, from, len);
+#ifndef LZ4E_MULTIPAGE
+	flush_dcache_page(to->bv_page);
+#endif
+	kunmap_local(addrTo);
+#endif
 }
 
-static FORCE_INLINE void LZ4E_memcpy_from_sg(char *to, const struct bio_vec *from,
-		struct bvec_iter iter, size_t len)
+static FORCE_INLINE void LZ4E_memcpy_btwn_bvecs(struct bio_vec *to,
+		const struct bio_vec *from, const unsigned len,
+		const unsigned idxTo, const unsigned idxFrom,
+		LZ4E_stream_t_internal *dictPtr)
 {
-	struct bio_vec curBvec;
-	size_t toRead;
+#ifdef LZ4E_PREMAP
+	unsigned baseIdxFrom = dictPtr->srcBaseIdx;
+	unsigned baseIdxTo = dictPtr->dstBaseIdx;
+	char *addrFrom = dictPtr->srcAddrs[idxFrom - baseIdxFrom];
+	char *addrTo = dictPtr->dstAddrs[idxTo - baseIdxTo];
+	LZ4_memcpy(addrTo + to->bv_offset, addrFrom + from->bv_offset, len);
+#else
+	char *addrFrom = kmap_local_page(from->bv_page);
+	char *addrTo = kmap_local_page(to->bv_page);
+	LZ4_memcpy(addrTo + to->bv_offset, addrFrom + from->bv_offset, len);
+#ifndef LZ4E_MULTIPAGE
+	flush_dcache_page(to->bv_page);
+#endif
+	kunmap_local(addrTo);
+	kunmap_local(addrFrom);
+#endif
+}
 
-	BUG_ON(len > iter.bi_size);
+static FORCE_INLINE void LZ4E_memcpy_from_sg(char *to,
+		const struct bio_vec *from, struct bvec_iter iter, unsigned len,
+		LZ4E_stream_t_internal *dictPtr)
+{
+	struct bio_vec bvFrom;
+	unsigned toRead;
 
 	while (len) {
-		curBvec = bvec_iter_bvec(from, iter);
-		toRead = min_t(size_t, len, curBvec.bv_len);
+#ifdef LZ4E_MULTIPAGE
+		bvFrom = mp_bvec_iter_bvec(from, iter);
+#else
+		bvFrom = bvec_iter_bvec(from, iter);
+#endif
+		toRead = min_t(unsigned, len, bvFrom.bv_len);
 
-		LZ4E_memcpy_from_bvec(to, &curBvec, toRead);
-		bvec_iter_advance_single(from, &iter, (unsigned)toRead);
+		LZ4E_memcpy_from_bvec(to, &bvFrom, toRead,
+				iter.bi_idx, dictPtr);
+		LZ4E_iter_advance_single(from, &iter, toRead);
 		to += toRead;
 		len -= toRead;
 	}
 }
 
-static FORCE_INLINE void LZ4E_memcpy_to_sg(struct bio_vec *to, const char *from,
-		struct bvec_iter iter, size_t len)
+static FORCE_INLINE void LZ4E_memcpy_to_sg(struct bio_vec *to,
+		const char *from, struct bvec_iter iter, unsigned len,
+		LZ4E_stream_t_internal *dictPtr)
 {
-	struct bio_vec curBvec;
-	size_t toWrite;
-
-	BUG_ON(len > iter.bi_size);
+	struct bio_vec bvTo;
+	unsigned toWrite;
 
 	while (len) {
-		curBvec = bvec_iter_bvec(to, iter);
-		toWrite = min_t(size_t, len, curBvec.bv_len);
+#ifdef LZ4E_MULTIPAGE
+		bvTo = mp_bvec_iter_bvec(to, iter);
+#else
+		bvTo = bvec_iter_bvec(to, iter);
+#endif
+		toWrite = min_t(unsigned, len, bvTo.bv_len);
 
-		LZ4E_memcpy_to_bvec(&curBvec, from, toWrite);
-		bvec_iter_advance_single(to, &iter, (unsigned)toWrite);
+		LZ4E_memcpy_to_bvec(&bvTo, from, toWrite,
+				iter.bi_idx, dictPtr);
+		LZ4E_iter_advance_single(to, &iter, toWrite);
 		from += toWrite;
 		len -= toWrite;
 	}
 }
 
+static FORCE_INLINE void LZ4E_memcpy_sg(struct bio_vec *to,
+		const struct bio_vec *from, struct bvec_iter iterTo,
+		struct bvec_iter iterFrom, unsigned len,
+		LZ4E_stream_t_internal *dictPtr)
+{
+	struct bio_vec bvFrom;
+	struct bio_vec bvTo;
+	unsigned toCopy;
+
+	while (len) {
+#ifdef LZ4E_MULTIPAGE
+		bvFrom = mp_bvec_iter_bvec(from, iterFrom);
+		bvTo = mp_bvec_iter_bvec(to, iterTo);
+#else
+		bvFrom = bvec_iter_bvec(from, iterFrom);
+		bvTo = bvec_iter_bvec(to, iterTo);
+#endif
+		toCopy = min_t(unsigned, len, min_t(unsigned, bvFrom.bv_len, bvTo.bv_len));
+
+		LZ4E_memcpy_btwn_bvecs(&bvTo, &bvFrom, toCopy,
+				iterTo.bi_idx, iterFrom.bi_idx, dictPtr);
+		LZ4E_iter_advance_single(from, &iterFrom, toCopy);
+		LZ4E_iter_advance_single(to, &iterTo, toCopy);
+		len -= toCopy;
+	}
+}
+
 static FORCE_INLINE BYTE LZ4E_read8(const struct bio_vec *from,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
 	BYTE ret;
 
-	LZ4E_memcpy_from_sg(&ret, from, iter, 1);
+	LZ4E_memcpy_from_sg(&ret, from, iter, 1, dictPtr);
 	return ret;
 }
 
 static FORCE_INLINE void LZ4E_write8(struct bio_vec *to, const BYTE value,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
-	LZ4E_memcpy_to_sg(to, &value, iter, 1);
+	LZ4E_memcpy_to_sg(to, &value, iter, 1, dictPtr);
 }
 
 static FORCE_INLINE U16 LZ4E_read16(const struct bio_vec *from,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
 	U16 ret;
 
-	LZ4E_memcpy_from_sg((char *)(&ret), from, iter, 2);
+	LZ4E_memcpy_from_sg((char *)(&ret), from, iter, 2, dictPtr);
 	return ret;
 }
 
 static FORCE_INLINE void LZ4E_write16(struct bio_vec *to, const U16 value,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
-	LZ4E_memcpy_to_sg(to, (char *)(&value), iter, 2);
+	LZ4E_memcpy_to_sg(to, (char *)(&value), iter, 2, dictPtr);
 }
 
 static FORCE_INLINE U16 LZ4E_readLE16(const struct bio_vec *from,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
 	U16 ret;
 
-	LZ4E_memcpy_from_sg((char *)(&ret), from, iter, 2);
+	LZ4E_memcpy_from_sg((char *)(&ret), from, iter, 2, dictPtr);
 	return LZ4E_toLE16(ret);
 }
 
 static FORCE_INLINE void LZ4E_writeLE16(struct bio_vec *to, const U16 value,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
 	U16 valueLE = LZ4E_toLE16(value);
 
-	LZ4E_memcpy_to_sg(to, (char *)(&valueLE), iter, 2);
+	LZ4E_memcpy_to_sg(to, (char *)(&valueLE), iter, 2, dictPtr);
 }
 
 static FORCE_INLINE U32 LZ4E_read32(const struct bio_vec *from,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
 	U32 ret;
 
-	LZ4E_memcpy_from_sg((char *)(&ret), from, iter, 4);
+	LZ4E_memcpy_from_sg((char *)(&ret), from, iter, 4, dictPtr);
 	return ret;
 }
 
 static FORCE_INLINE void LZ4E_write32(struct bio_vec *to, const U32 value,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
-	LZ4E_memcpy_to_sg(to, (char *)(&value), iter, 4);
+	LZ4E_memcpy_to_sg(to, (char *)(&value), iter, 4, dictPtr);
 }
 
 static FORCE_INLINE U64 LZ4E_read64(const struct bio_vec *from,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
 	U64 ret;
 
-	LZ4E_memcpy_from_sg((char *)(&ret), from, iter, 8);
+	LZ4E_memcpy_from_sg((char *)(&ret), from, iter, 8, dictPtr);
 	return ret;
 }
 
 static FORCE_INLINE void LZ4E_write64(struct bio_vec *to, const U64 value,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
-	LZ4E_memcpy_to_sg(to, (char *)(&value), iter, 8);
+	LZ4E_memcpy_to_sg(to, (char *)(&value), iter, 8, dictPtr);
 }
 
 static FORCE_INLINE size_t LZ4E_readArch(const struct bio_vec *from,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPrt)
 {
 #if LZ4_ARCH64
-	return (size_t)LZ4E_read64(from, iter);
+	return (size_t)LZ4E_read64(from, iter, dictPrt);
 #else
-	return (size_t)LZ4E_read32(from, iter);
+	return (size_t)LZ4E_read32(from, iter, dictPtr);
 #endif
 }
 
 static FORCE_INLINE void LZ4E_writeArch(struct bio_vec *to, const size_t value,
-		struct bvec_iter iter)
+		struct bvec_iter iter, LZ4E_stream_t_internal *dictPtr)
 {
 #if LZ4_ARCH64
-	LZ4E_write64(to, (U64)value, iter);
+	LZ4E_write64(to, (U64)value, iter, dictPtr);
 #else
-	LZ4E_write32(to, (U32)value, iter);
+	LZ4E_write32(to, (U32)value, iter, dictPtr);
 #endif
 }
 
 static FORCE_INLINE void LZ4E_copy8(struct bio_vec *dst, const struct bio_vec *src,
-		struct bvec_iter dstIter, struct bvec_iter srcIter)
+		struct bvec_iter dstIter, struct bvec_iter srcIter,
+		LZ4E_stream_t_internal *dictPtr)
 {
-	BYTE val = LZ4E_read8(src, srcIter);
+	BYTE val = LZ4E_read8(src, srcIter, dictPtr);
 
-	LZ4E_write8(dst, val, dstIter);
+	LZ4E_write8(dst, val, dstIter, dictPtr);
 }
 
 static FORCE_INLINE void LZ4E_copy16(struct bio_vec *dst, const struct bio_vec *src,
-		struct bvec_iter dstIter, struct bvec_iter srcIter)
+		struct bvec_iter dstIter, struct bvec_iter srcIter,
+		LZ4E_stream_t_internal *dictPtr)
 {
-	U16 val = LZ4E_read16(src, srcIter);
+	U16 val = LZ4E_read16(src, srcIter, dictPtr);
 
-	LZ4E_write16(dst, val, dstIter);
+	LZ4E_write16(dst, val, dstIter, dictPtr);
 }
 
 static FORCE_INLINE void LZ4E_copy32(struct bio_vec *dst, const struct bio_vec *src,
-		struct bvec_iter dstIter, struct bvec_iter srcIter)
+		struct bvec_iter dstIter, struct bvec_iter srcIter,
+		LZ4E_stream_t_internal *dictPtr)
 {
-	U32 val = LZ4E_read32(src, srcIter);
+	U32 val = LZ4E_read32(src, srcIter, dictPtr);
 
-	LZ4E_write32(dst, val, dstIter);
+	LZ4E_write32(dst, val, dstIter, dictPtr);
 }
 
 static FORCE_INLINE void LZ4E_copy64(struct bio_vec *dst, const struct bio_vec *src,
-		struct bvec_iter dstIter, struct bvec_iter srcIter)
+		struct bvec_iter dstIter, struct bvec_iter srcIter,
+		LZ4E_stream_t_internal *dictPtr)
 {
-#if LZ4_ARCH64
-	U64 val = LZ4E_read64(src, srcIter);
+	U64 val = LZ4E_read64(src, srcIter, dictPtr);
 
-	LZ4E_write64(dst, val, dstIter);
-#else
-	U32 a = LZ4E_read32(src, srcIter);
-	bvec_iter_advance(src, &srcIter, 4)
-	U32 b = LZ4E_read32(src, srcIter);
-
-	LZ4E_write32(dst, a, dstIter);
-	bvec_iter_advance(dst, &dstIter, 4);
-	LZ4E_write32(dst, b, dstIter);
-#endif
-}
-
-/*
- * customized variant of memcpy,
- * which can overwrite up to 7 bytes beyond target len
- */
-static FORCE_INLINE void LZ4E_wildCopy(struct bio_vec *dst, const struct bio_vec *src,
-	struct bvec_iter dstIter, struct bvec_iter srcIter, size_t len)
-{
-	while (len) {
-		LZ4E_copy64(dst, src, dstIter, srcIter);
-		bvec_iter_advance(src, &srcIter, WILDCOPYLENGTH);
-		bvec_iter_advance(dst, &dstIter, WILDCOPYLENGTH);
-		len -= min_t(size_t, len, WILDCOPYLENGTH);
-	}
-}
-
-static FORCE_INLINE void LZ4E_memcpy(struct bio_vec *dst, const struct bio_vec *src,
-	struct bvec_iter dstIter, struct bvec_iter srcIter, size_t len)
-{
-	for (int i = 0; i < len / 8; ++i) {
-		LZ4E_copy64(dst, src, dstIter, srcIter);
-		bvec_iter_advance(src, &srcIter, 8);
-		bvec_iter_advance(dst, &dstIter, 8);
-	}
-
-	len %= 8;
-
-	if (len >= 4) {
-		LZ4E_copy32(dst, src, dstIter, srcIter);
-		bvec_iter_advance(src, &srcIter, 4);
-		bvec_iter_advance(dst, &dstIter, 4);
-		len -= 4;
-	}
-
-	if (len >= 2) {
-		LZ4E_copy16(dst, src, dstIter, srcIter);
-		bvec_iter_advance(src, &srcIter, 2);
-		bvec_iter_advance(dst, &dstIter, 2);
-		len -= 2;
-	}
-
-	if (len)
-		LZ4E_copy8(dst, src, dstIter, srcIter);
+	LZ4E_write64(dst, val, dstIter, dictPtr);
 }
 
 static FORCE_INLINE unsigned LZ4E_count(
 	const struct bio_vec *bvecs,
 	struct bvec_iter inIter,
 	struct bvec_iter matchIter,
-	const unsigned countLimit)
+	const unsigned countLimit,
+	LZ4E_stream_t_internal *dictPtr)
 {
 	unsigned count = 0;
 
 	for (int i = 0; i < countLimit / STEPSIZE; ++i) {
-		size_t const inVal = LZ4E_readArch(bvecs, inIter);
-		size_t const matchVal = LZ4E_readArch(bvecs, matchIter);
+		size_t const inVal = LZ4E_readArch(bvecs, inIter, dictPtr);
+		size_t const matchVal = LZ4E_readArch(bvecs, matchIter, dictPtr);
 		size_t const diff = inVal ^ matchVal;
 
 		if (diff) {
@@ -604,32 +663,32 @@ static FORCE_INLINE unsigned LZ4E_count(
 
 		count += STEPSIZE;
 
-		bvec_iter_advance(bvecs, &inIter, STEPSIZE);
-		bvec_iter_advance(bvecs, &matchIter, STEPSIZE);
+		LZ4E_iter_advance(bvecs, &inIter, STEPSIZE);
+		LZ4E_iter_advance(bvecs, &matchIter, STEPSIZE);
 	}
 
 	unsigned rem = countLimit % STEPSIZE;
 
 #if LZ4_ARCH64
-	if (rem >= 4 && LZ4E_read32(bvecs, inIter)
-			== LZ4E_read32(bvecs, matchIter)) {
+	if (rem >= 4 && LZ4E_read32(bvecs, inIter, dictPtr)
+			== LZ4E_read32(bvecs, matchIter, dictPtr)) {
 		count += 4;
 		rem -= 4;
-		bvec_iter_advance(bvecs, &inIter, 4);
-		bvec_iter_advance(bvecs, &matchIter, 4);
+		LZ4E_iter_advance(bvecs, &inIter, 4);
+		LZ4E_iter_advance(bvecs, &matchIter, 4);
 	}
 #endif
 
-	if (rem >= 2 && LZ4E_read16(bvecs, inIter)
-			== LZ4E_read16(bvecs, matchIter)) {
+	if (rem >= 2 && LZ4E_read16(bvecs, inIter, dictPtr)
+			== LZ4E_read16(bvecs, matchIter, dictPtr)) {
 		count += 2;
 		rem -= 2;
-		bvec_iter_advance(bvecs, &inIter, 2);
-		bvec_iter_advance(bvecs, &matchIter, 2);
+		LZ4E_iter_advance(bvecs, &inIter, 2);
+		LZ4E_iter_advance(bvecs, &matchIter, 2);
 	}
 
-	if (rem && LZ4E_read8(bvecs, inIter)
-			== LZ4E_read8(bvecs, matchIter))
+	if (rem && LZ4E_read8(bvecs, inIter, dictPtr)
+			== LZ4E_read8(bvecs, matchIter, dictPtr))
 		count++;
 
 	return count;
@@ -686,7 +745,7 @@ typedef union {
 	 })
 
 typedef enum { noLimit = 0, limitedOutput = 1 } limitedOutput_directive;
-typedef enum { byU16 = 1, byU32 = 3, byU64 = 7 } tableType_t;
+typedef enum { byU16 = 0b001, byU32 = 0b011, byU64 = 0b111 } tableType_t;
 
 typedef enum { noDict = 0, withPrefix64k, usingExtDict } dict_directive;
 typedef enum { noDictIssue = 0, dictSmall } dictIssue_directive;
