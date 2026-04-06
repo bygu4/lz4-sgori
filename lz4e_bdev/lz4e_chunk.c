@@ -39,7 +39,7 @@ const char *lz4e_comp_str[LZ4E_COMP_TYPE_COUNT] = {
 
 /* -------------------- helpers -------------------- */
 
-static int lz4e_buf_copy_from_bio(struct lz4e_buffer *dst, struct bio *src)
+static void lz4e_buf_copy_from_bio(struct lz4e_buffer *dst, struct bio *src)
 {
 	char *ptr = dst->data;
 	struct bio_vec bvec;
@@ -51,10 +51,9 @@ static int lz4e_buf_copy_from_bio(struct lz4e_buffer *dst, struct bio *src)
 	}
 
 	LZ4E_PR_DEBUG("copied from bio to buffer");
-	return 0;
 }
 
-static int lz4e_buf_copy_to_bio(struct bio *dst, struct lz4e_buffer *src)
+static void lz4e_buf_copy_to_bio(struct bio *dst, struct lz4e_buffer *src)
 {
 	char *ptr = src->data;
 	struct bio_vec bvec;
@@ -66,7 +65,6 @@ static int lz4e_buf_copy_to_bio(struct bio *dst, struct lz4e_buffer *src)
 	}
 
 	LZ4E_PR_DEBUG("copied from buffer to bio");
-	return 0;
 }
 
 static int lz4e_buf_add_to_bio(struct bio *bio, struct lz4e_buffer *buf)
@@ -154,7 +152,13 @@ static inline void lz4e_chunk_vect_map_srcs(struct lz4e_chunk_vect *chunk)
 	/* restore iter in case of read */
 	chunk->src_bio->bi_iter = chunk->src_iter;
 
+/* some pages in biovec can be in highmem, need to map individually */
+#ifdef CONFIG_HIGHMEM
 	bio_for_each_segment (bvec, chunk->src_bio, iter) {
+/* all pages are in lowmem and mapped directly into contiguous chunks */
+#else
+	bio_for_each_bvec (bvec, chunk->src_bio, iter) {
+#endif
 		chunk->srcs[ibuf].data =
 			kmap_local_page(bvec.bv_page) + bvec.bv_offset;
 		ibuf++;
@@ -184,6 +188,7 @@ static inline int lz4e_chunk_vect_run_comp_generic(
 	unsigned int decomp_size = 0;
 	ktime_t comp_time = ktime_set(0, 0);
 	ktime_t decomp_time = ktime_set(0, 0);
+	ktime_t duration;
 
 	/* map buffers to compress from */
 	lz4e_chunk_vect_map_srcs(internal);
@@ -193,7 +198,6 @@ static inline int lz4e_chunk_vect_run_comp_generic(
 	for (int i = 0; i < internal->buf_cnt; ++i) {
 		struct lz4e_buffer *decomp_buf = &internal->srcs[i];
 		struct lz4e_buffer *comp_buf = &internal->dsts[i];
-		ktime_t duration;
 
 		LZ4E_KTIME_WRAP(compress(internal->wrkmem, decomp_buf, comp_buf,
 					 chunk->acceleration),
@@ -218,7 +222,6 @@ static inline int lz4e_chunk_vect_run_comp_generic(
 	for (int i = 0; i < internal->buf_cnt; ++i) {
 		struct lz4e_buffer *comp_buf = &internal->dsts[i];
 		struct lz4e_buffer *decomp_buf = &internal->srcs[i];
-		ktime_t duration;
 
 		LZ4E_KTIME_WRAP(decompress(internal->wrkmem, comp_buf,
 					   decomp_buf),
@@ -349,8 +352,9 @@ static int lz4e_chunk_init_cont(void *chunk_ptr, struct bio *src_bio,
 		copy_time = ktime_set(0, 0);
 		break;
 	case LZ4E_WRITE:
-		LZ4E_KTIME_WRAP(lz4e_buf_copy_from_bio(&internal->src, src_bio),
-				copy_time, ret);
+		LZ4E_KTIME_WRAP_VOID(lz4e_buf_copy_from_bio(&internal->src,
+							    src_bio),
+				     copy_time);
 		break;
 	}
 
@@ -372,8 +376,9 @@ static int lz4e_chunk_end_cont(void *chunk_ptr, struct bio *dst_bio,
 
 	switch (data_dir) {
 	case LZ4E_READ:
-		LZ4E_KTIME_WRAP(lz4e_buf_copy_to_bio(dst_bio, &internal->src),
-				copy_time, ret);
+		LZ4E_KTIME_WRAP_VOID(lz4e_buf_copy_to_bio(dst_bio,
+							  &internal->src),
+				     copy_time);
 		break;
 	case LZ4E_WRITE:
 		ret = lz4e_buf_add_to_bio(dst_bio, &internal->src);
@@ -481,7 +486,13 @@ lz4e_chunk_alloc_vect(struct bio *orig_bio, struct lz4e_under_dev *under_dev,
 	void *wrkmem;
 	int ibuf;
 
+/* some pages in biovec can be in highmem, need to map individually */
+#ifdef CONFIG_HIGHMEM
 	unsigned int buf_cnt = bio_segments(orig_bio);
+/* all pages are in lowmem and mapped directly into contiguous chunks */
+#else
+	unsigned int buf_cnt = orig_bio->bi_vcnt;
+#endif
 
 	internal = kzalloc(sizeof(*internal), gfp_mask);
 	if (!internal) {
@@ -524,7 +535,13 @@ lz4e_chunk_alloc_vect(struct bio *orig_bio, struct lz4e_under_dev *under_dev,
 		internal->dst_size = 0;
 		ibuf = 0;
 
+/* some pages in biovec can be in highmem, need to map individually */
+#ifdef CONFIG_HIGHMEM
 		bio_for_each_segment (bvec, orig_bio, iter) {
+/* all pages are in lowmem and mapped directly into contiguous chunks */
+#else
+		bio_for_each_bvec (bvec, orig_bio, iter) {
+#endif
 			size_t src_size = bvec.bv_len;
 			size_t dst_size = LZ4_COMPRESSBOUND(src_size);
 			char *dst_data;
@@ -575,7 +592,6 @@ static int lz4e_chunk_init_vect(void *chunk_ptr, struct bio *src_bio,
 	internal->src_iter = src_bio->bi_iter;
 
 	chunk->mem_usage = internal->dst_size + LZ4_MEM_COMPRESS;
-	chunk->copy_time = ktime_set(0, 0);
 
 	LZ4E_PR_DEBUG("vect: initialized chunk");
 	return 0;
@@ -735,7 +751,6 @@ static int lz4e_chunk_init_extd(void *chunk_ptr, struct bio *src_bio,
 	}
 
 	chunk->mem_usage = internal->dst_buf.buf_size + LZ4E_MEM_COMPRESS;
-	chunk->copy_time = ktime_set(0, 0);
 
 	LZ4E_PR_DEBUG("extd: initialized chunk");
 	return 0;
