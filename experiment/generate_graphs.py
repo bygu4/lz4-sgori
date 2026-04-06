@@ -205,10 +205,10 @@ class GraphGenerator:
                     ax.text(
                         bar.get_x() + bar.get_width() / 2.0,
                         bar.get_height() + std_val + max_height * 0.02,
-                        f"{mean_val:.1f}",
+                        f"{mean_val:.3f}",
                         ha="center",
                         va="bottom",
-                        fontsize=8,
+                        fontsize=7,
                     )
 
         ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
