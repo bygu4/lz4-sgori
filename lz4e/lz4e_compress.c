@@ -199,9 +199,6 @@ static FORCE_INLINE bool LZ4E_compress_init(
 	struct bio_vec curBvec;
 	unsigned int i;
 
-	dictPtr->srcBaseIdx = srcStart.bi_idx;
-	dictPtr->dstBaseIdx = dstStart.bi_idx;
-
 	LZ4E_for_each_bvec(curBvec, src, iter, srcStart) {
 		i = iter.bi_idx - srcStart.bi_idx;
 
@@ -219,6 +216,9 @@ static FORCE_INLINE bool LZ4E_compress_init(
 #ifdef LZ4E_PREMAP
 		dictPtr->srcAddrs[i] = kmap_local_page(curBvec.bv_page);
 	}
+
+	dictPtr->srcBaseIdx = srcStart.bi_idx;
+	dictPtr->dstBaseIdx = dstStart.bi_idx;
 
 	LZ4E_for_each_bvec(curBvec, dst, iter, dstStart) {
 		i = iter.bi_idx - dstStart.bi_idx;
@@ -247,11 +247,17 @@ static FORCE_INLINE void LZ4E_compress_end(
 #endif
 
 #ifdef LZ4E_PREMAP
-	for (int i = BIO_MAX_VECS - 1; i >= 0; --i)
-		kunmap_local(dictPtr->dstAddrs[i]);
+	for (int i = BIO_MAX_VECS - 1; i >= 0; --i) {
+		BYTE *addr = dictPtr->dstAddrs[i];
+		if (addr)
+			kunmap_local(addr);
+	}
 
-	for (int i = BIO_MAX_VECS - 1; i >= 0; --i)
-		kunmap_local(dictPtr->srcAddrs[i]);
+	for (int i = BIO_MAX_VECS - 1; i >= 0; --i) {
+		BYTE *addr = dictPtr->srcAddrs[i];
+		if (addr)
+			kunmap_local(addr);
+	}
 #endif
 }
 
