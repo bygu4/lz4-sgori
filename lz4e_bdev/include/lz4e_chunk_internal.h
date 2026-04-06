@@ -68,4 +68,19 @@ struct lz4e_chunk_extd {
 		(duration) = ktime_sub(end, start); \
 	} while (0)
 
+/* same wrapper, but without return value */
+#define LZ4E_KTIME_WRAP_VOID(func, duration)        \
+	do {                                        \
+		ktime_t start;                      \
+		ktime_t end;                        \
+                                                    \
+		preempt_disable();                  \
+		start = ktime_get();                \
+		(func);                             \
+		end = ktime_get();                  \
+		preempt_enable();                   \
+                                                    \
+		(duration) = ktime_sub(end, start); \
+	} while (0)
+
 #endif
