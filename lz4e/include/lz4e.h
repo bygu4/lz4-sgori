@@ -28,11 +28,11 @@
 #define LZ4E_ADDRS_SIZE_U64	(BIO_MAX_VECS * sizeof(size_t) / sizeof(unsigned long long))
 #define LZ4E_STREAMSIZE_U64	\
 	(LZ4E_HASH_SIZE_U64 \
-	 + (2 * LZ4E_ADDRS_SIZE_U64) \
-	 + LZ4E_BV_ITER_SIZE_U64 + 1)
+	 + LZ4E_BV_ITER_SIZE_U64 \
+	 + (2 * LZ4E_ADDRS_SIZE_U64) + 1)
 #else
 #define LZ4E_STREAMSIZE_U64	\
-	(LZ4E_HASH_SIZE_U64 + LZ4E_BV_ITER_SIZE_U64 + 1)
+	(LZ4E_HASH_SIZE_U64 + LZ4E_BV_ITER_SIZE_U64)
 #endif
 
 #define LZ4E_STREAMSIZE		\
@@ -51,13 +51,13 @@
  */
 typedef struct {
 	uint32_t hashTable[LZ4E_HASH_SIZE_U32];
+	uint32_t bvIterSize[BIO_MAX_VECS];
 #ifdef LZ4E_PREMAP
 	uint8_t *srcAddrs[BIO_MAX_VECS];
 	uint8_t *dstAddrs[BIO_MAX_VECS];
-#endif
-	uint32_t bvIterSize[BIO_MAX_VECS];
 	uint32_t srcBaseIdx;
 	uint32_t dstBaseIdx;
+#endif
 } LZ4E_stream_t_internal;
 typedef union {
 	unsigned long long table[LZ4E_STREAMSIZE_U64];
