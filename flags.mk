@@ -8,4 +8,4 @@ ccflags-y := \
 	-Werror=implicit-function-declaration \
 	-std=gnu18 \
 	-g \
-	-O2
+	-O3

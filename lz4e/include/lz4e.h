@@ -8,14 +8,33 @@
 
 #define LZ4E_ACCELERATION_DEFAULT 1
 
+/* whether to use multi-page bvecs on sg-buffer read/write/copy */
+#ifndef CONFIG_HIGHMEM
+#define LZ4E_MULTIPAGE 1
+#endif
+
+/* whether to map pages prematurely */
+#ifdef LZ4E_MULTIPAGE
+#define LZ4E_PREMAP 1
+#endif
+
 #define LZ4E_MEMORY_USAGE	14
 #define LZ4E_HASHLOG		(LZ4E_MEMORY_USAGE - 2)
 #define LZ4E_HASH_SIZE_U32	(1 << LZ4E_HASHLOG)
 #define LZ4E_HASH_SIZE_U64	(LZ4E_HASH_SIZE_U32 >> 1)
 #define LZ4E_BV_ITER_SIZE_U64	(BIO_MAX_VECS >> 1)
 
+#ifdef LZ4E_PREMAP
+#define LZ4E_ADDRS_SIZE_U64	(BIO_MAX_VECS * sizeof(size_t) / sizeof(unsigned long long))
 #define LZ4E_STREAMSIZE_U64	\
-	(LZ4E_HASH_SIZE_U64 + LZ4E_BV_ITER_SIZE_U64 + 4)
+	(LZ4E_HASH_SIZE_U64 \
+	 + (2 * LZ4E_ADDRS_SIZE_U64) \
+	 + LZ4E_BV_ITER_SIZE_U64 + 1)
+#else
+#define LZ4E_STREAMSIZE_U64	\
+	(LZ4E_HASH_SIZE_U64 + LZ4E_BV_ITER_SIZE_U64 + 1)
+#endif
+
 #define LZ4E_STREAMSIZE		\
 	(LZ4E_STREAMSIZE_U64 * sizeof(unsigned long long))
 
@@ -31,13 +50,14 @@
  * LZ4E_stream_t - information structure to track an LZ4E stream.
  */
 typedef struct {
-	uint32_t bvIterSize[BIO_MAX_VECS];
 	uint32_t hashTable[LZ4E_HASH_SIZE_U32];
-	uint32_t currentOffset;
-	uint32_t initCheck;
-	const uint8_t *dictionary;
-	uint8_t *bufferStart;
-	uint32_t dictSize;
+#ifdef LZ4E_PREMAP
+	uint8_t *srcAddrs[BIO_MAX_VECS];
+	uint8_t *dstAddrs[BIO_MAX_VECS];
+#endif
+	uint32_t bvIterSize[BIO_MAX_VECS];
+	uint32_t srcBaseIdx;
+	uint32_t dstBaseIdx;
 } LZ4E_stream_t_internal;
 typedef union {
 	unsigned long long table[LZ4E_STREAMSIZE_U64];
