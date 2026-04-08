@@ -504,7 +504,7 @@ static FORCE_INLINE void LZ4E_memcpy_from_sg(char *to,
 	struct bio_vec bvFrom;
 	unsigned toRead;
 
-	while (len) {
+	do {
 #ifdef LZ4E_MULTIPAGE
 		bvFrom = mp_bvec_iter_bvec(from, iter);
 #else
@@ -517,7 +517,7 @@ static FORCE_INLINE void LZ4E_memcpy_from_sg(char *to,
 		LZ4E_iter_advance_single(from, &iter, toRead);
 		to += toRead;
 		len -= toRead;
-	}
+	} while (len);
 }
 
 static FORCE_INLINE void LZ4E_memcpy_to_sg(struct bio_vec *to,
@@ -527,7 +527,7 @@ static FORCE_INLINE void LZ4E_memcpy_to_sg(struct bio_vec *to,
 	struct bio_vec bvTo;
 	unsigned toWrite;
 
-	while (len) {
+	do {
 #ifdef LZ4E_MULTIPAGE
 		bvTo = mp_bvec_iter_bvec(to, iter);
 #else
@@ -540,7 +540,7 @@ static FORCE_INLINE void LZ4E_memcpy_to_sg(struct bio_vec *to,
 		LZ4E_iter_advance_single(to, &iter, toWrite);
 		from += toWrite;
 		len -= toWrite;
-	}
+	} while (len);
 }
 
 static FORCE_INLINE void LZ4E_memcpy_sg(struct bio_vec *to,
@@ -552,7 +552,7 @@ static FORCE_INLINE void LZ4E_memcpy_sg(struct bio_vec *to,
 	struct bio_vec bvTo;
 	unsigned toCopy;
 
-	while (len) {
+	do {
 #ifdef LZ4E_MULTIPAGE
 		bvFrom = mp_bvec_iter_bvec(from, iterFrom);
 		bvTo = mp_bvec_iter_bvec(to, iterTo);
@@ -567,7 +567,7 @@ static FORCE_INLINE void LZ4E_memcpy_sg(struct bio_vec *to,
 		LZ4E_iter_advance_single(from, &iterFrom, toCopy);
 		LZ4E_iter_advance_single(to, &iterTo, toCopy);
 		len -= toCopy;
-	}
+	} while (len);
 }
 
 static FORCE_INLINE BYTE LZ4E_read8(const struct bio_vec *from,
