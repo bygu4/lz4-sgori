@@ -50,13 +50,14 @@
  ********************************/
 static FORCE_INLINE U32 LZ4E_getHashLog(tableType_t tableType)
 {
-	if (tableType == byU64)
-		return LZ4E_HASHLOG - 1;
+	if (tableType == byU16)
+		return LZ4E_HASHLOG + 1;
 
-	if (tableType == byU32)
+	if (likely(tableType == byU32))
 		return LZ4E_HASHLOG;
 
-	return LZ4E_HASHLOG + 1;
+	return LZ4E_HASHLOG - 1;
+
 }
 
 static FORCE_INLINE U32 LZ4E_hash4(
@@ -92,7 +93,7 @@ static FORCE_INLINE U32 LZ4E_hashPosition(
 	LZ4E_stream_t_internal *dictPtr)
 {
 #if LZ4_ARCH64
-	if (tableType == byU32)
+	if (likely(tableType == byU32))
 		return LZ4E_hash5(LZ4E_read64(bvecs, pos, dictPtr), tableType);
 #endif
 
@@ -107,22 +108,22 @@ static void LZ4E_putPositionOnHash(
 	const struct bvec_iter baseIter)
 {
 	switch (tableType) {
-	case byU64: {
-		LZ4E_tbl_addr64_t *hashTable = (LZ4E_tbl_addr64_t *)tableBase;
+	case byU16: {
+		U16 *hashTable = (U16 *)tableBase;
 		hashTable[h] = LZ4E_TBL_ADDR_FROM_ITER(
-				LZ4E_tbl_addr64_t, pos, baseIter);
+				LZ4E_tbl_addr16_t, pos, baseIter).raw;
 		return;
 	}
 	case byU32: {
-		LZ4E_tbl_addr32_t *hashTable = (LZ4E_tbl_addr32_t *)tableBase;
+		U32 *hashTable = (U32 *)tableBase;
 		hashTable[h] = LZ4E_TBL_ADDR_FROM_ITER(
-				LZ4E_tbl_addr32_t, pos, baseIter);
+				LZ4E_tbl_addr32_t, pos, baseIter).raw;
 		return;
 	}
-	case byU16: {
-		LZ4E_tbl_addr16_t *hashTable = (LZ4E_tbl_addr16_t *)tableBase;
+	case byU64: {
+		U64 *hashTable = (U64 *)tableBase;
 		hashTable[h] = LZ4E_TBL_ADDR_FROM_ITER(
-				LZ4E_tbl_addr16_t, pos, baseIter);
+				LZ4E_tbl_addr64_t, pos, baseIter).raw;
 		return;
 	}}
 }
@@ -149,14 +150,14 @@ static struct bvec_iter LZ4E_getPositionOnHash(
 {
 	const U32 *bvIterSize = (const U32 *)biSizeBase;
 
-	if (tableType == byU64) {
-		const LZ4E_tbl_addr64_t *hashTable = (const LZ4E_tbl_addr64_t *)tableBase;
-		const LZ4E_tbl_addr64_t addr = hashTable[h];
+	if (tableType == byU16) {
+		const LZ4E_tbl_addr16_t *hashTable = (const LZ4E_tbl_addr16_t *)tableBase;
+		const LZ4E_tbl_addr16_t addr = hashTable[h];
 		return ((addr.raw != 0)
 				? LZ4E_TBL_ADDR_TO_ITER(addr, baseIter, bvIterSize)
 				: baseIter);
 	}
-	if (tableType == byU32) {
+	if (likely(tableType == byU32)) {
 		const LZ4E_tbl_addr32_t *hashTable = (const LZ4E_tbl_addr32_t *)tableBase;
 		const LZ4E_tbl_addr32_t addr = hashTable[h];
 		return ((addr.raw != 0)
@@ -164,8 +165,8 @@ static struct bvec_iter LZ4E_getPositionOnHash(
 				: baseIter);
 	}
 	{
-		const LZ4E_tbl_addr16_t *hashTable = (const LZ4E_tbl_addr16_t *)tableBase;
-		const LZ4E_tbl_addr16_t addr = hashTable[h];
+		const LZ4E_tbl_addr64_t *hashTable = (const LZ4E_tbl_addr64_t *)tableBase;
+		const LZ4E_tbl_addr64_t addr = hashTable[h];
 		return ((addr.raw != 0)
 				? LZ4E_TBL_ADDR_TO_ITER(addr, baseIter, bvIterSize)
 				: baseIter);
@@ -202,14 +203,14 @@ static FORCE_INLINE bool LZ4E_compress_init(
 	LZ4E_for_each_bvec(curBvec, src, iter, srcStart) {
 		i = iter.bi_idx - srcStart.bi_idx;
 
-		if (unlikely(i >= BIO_MAX_VECS))
+		if (i >= BIO_MAX_VECS)
 			return false;
 
 		if (i >= LZ4E_TBL_ADDR16_IDX_LIMIT
 				|| curBvec.bv_len > LZ4E_TBL_ADDR16_OFF_LIMIT)
 			*tableType |= byU32;
 
-		if (unlikely(curBvec.bv_len > LZ4E_TBL_ADDR32_OFF_LIMIT))
+		if (curBvec.bv_len > LZ4E_TBL_ADDR32_OFF_LIMIT)
 			*tableType |= byU64;
 
 		dictPtr->bvIterSize[i] = iter.bi_size + iter.bi_bvec_done;
@@ -223,7 +224,7 @@ static FORCE_INLINE bool LZ4E_compress_init(
 	LZ4E_for_each_bvec(curBvec, dst, iter, dstStart) {
 		i = iter.bi_idx - dstStart.bi_idx;
 
-		if (unlikely(i >= BIO_MAX_VECS))
+		if (i >= BIO_MAX_VECS)
 			return false;
 
 		dictPtr->dstAddrs[i] = kmap_local_page(curBvec.bv_page);
@@ -293,7 +294,7 @@ static FORCE_INLINE int LZ4E_compress_generic(
 	tableType_t tableType = byU16;
 
 	/* Init conditions */
-	if (unlikely(inputSize > LZ4E_MAX_INPUT_SIZE)) {
+	if (inputSize > LZ4E_MAX_INPUT_SIZE) {
 		/* Unsupported inputSize, too large (or negative) */
 		return 0;
 	}
@@ -323,7 +324,7 @@ static FORCE_INLINE int LZ4E_compress_generic(
 		goto _err;
 	}
 
-	if (unlikely(inputSize < LZ4E_MIN_LENGTH)) {
+	if (inputSize < LZ4E_MIN_LENGTH) {
 		/* Input too small, no compression (all literals) */
 		goto _last_literals;
 	}
