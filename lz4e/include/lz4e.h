@@ -11,11 +11,15 @@
 /* whether to use multi-page bvecs on sg-buffer read/write/copy */
 #ifndef CONFIG_HIGHMEM
 #define LZ4E_MULTIPAGE 1
+#else
+#define LZ4E_MULTIPAGE 0
 #endif
 
-/* whether to map pages prematurely */
-#ifdef LZ4E_MULTIPAGE
+/* whether to map pages in advance */
+#if LZ4E_MULTIPAGE
 #define LZ4E_PREMAP 1
+#else
+#define LZ4E_PREMAP 0
 #endif
 
 #define LZ4E_MEMORY_USAGE	14
@@ -24,7 +28,7 @@
 #define LZ4E_HASH_SIZE_U64	(LZ4E_HASH_SIZE_U32 >> 1)
 #define LZ4E_BV_ITER_SIZE_U64	(BIO_MAX_VECS >> 1)
 
-#ifdef LZ4E_PREMAP
+#if LZ4E_PREMAP
 #define LZ4E_ADDRS_SIZE_U64	(BIO_MAX_VECS * sizeof(size_t) / sizeof(unsigned long long))
 #define LZ4E_STREAMSIZE_U64	\
 	(LZ4E_HASH_SIZE_U64 \
@@ -52,7 +56,7 @@
 typedef struct {
 	uint32_t hashTable[LZ4E_HASH_SIZE_U32];
 	uint32_t bvIterSize[BIO_MAX_VECS];
-#ifdef LZ4E_PREMAP
+#if LZ4E_PREMAP
 	uint8_t *srcAddrs[BIO_MAX_VECS];
 	uint8_t *dstAddrs[BIO_MAX_VECS];
 	uint32_t srcBaseIdx;
