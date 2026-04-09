@@ -214,7 +214,7 @@ static FORCE_INLINE bool LZ4E_compress_init(
 			*tableType |= byU64;
 
 		dictPtr->bvIterSize[i] = iter.bi_size + iter.bi_bvec_done;
-#ifdef LZ4E_PREMAP
+#if LZ4E_PREMAP
 		dictPtr->srcAddrs[i] = kmap_local_page(curBvec.bv_page);
 	}
 
@@ -239,7 +239,7 @@ static FORCE_INLINE void LZ4E_compress_end(
 	const struct bvec_iter dstStart,
 	LZ4E_stream_t_internal *dictPtr)
 {
-#ifdef LZ4E_MULTIPAGE
+#if LZ4E_MULTIPAGE
 	struct bio_vec bvec;
 	struct bvec_iter iter;
 
@@ -247,7 +247,7 @@ static FORCE_INLINE void LZ4E_compress_end(
 		flush_dcache_page(bvec.bv_page);
 #endif
 
-#ifdef LZ4E_PREMAP
+#if LZ4E_PREMAP
 	for (int i = BIO_MAX_VECS - 1; i >= 0; --i) {
 		BYTE *addr = dictPtr->dstAddrs[i];
 		if (addr)

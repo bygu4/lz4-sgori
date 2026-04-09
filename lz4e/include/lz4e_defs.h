@@ -445,7 +445,7 @@ static FORCE_INLINE void LZ4E_memcpy_from_bvec(char *to,
 		const struct bio_vec *from, const unsigned len,
 		const unsigned idx, LZ4E_stream_t_internal *dictPtr)
 {
-#ifdef LZ4E_PREMAP
+#if LZ4E_PREMAP
 	unsigned baseIdx = dictPtr->srcBaseIdx;
 	char *addrFrom = dictPtr->srcAddrs[idx - baseIdx];
 	LZ4E_memcpy(to, addrFrom + from->bv_offset, len);
@@ -460,14 +460,14 @@ static FORCE_INLINE void LZ4E_memcpy_to_bvec(struct bio_vec *to,
 		const char *from, const unsigned len,
 		const unsigned idx, LZ4E_stream_t_internal *dictPtr)
 {
-#ifdef LZ4E_PREMAP
+#if LZ4E_PREMAP
 	unsigned baseIdx = dictPtr->dstBaseIdx;
 	char *addrTo = dictPtr->dstAddrs[idx - baseIdx];
 	LZ4E_memcpy(addrTo + to->bv_offset, from, len);
 #else
 	char *addrTo = kmap_local_page(to->bv_page);
 	LZ4E_memcpy(addrTo + to->bv_offset, from, len);
-#ifndef LZ4E_MULTIPAGE
+#if !LZ4E_MULTIPAGE
 	flush_dcache_page(to->bv_page);
 #endif
 	kunmap_local(addrTo);
@@ -479,7 +479,7 @@ static FORCE_INLINE void LZ4E_memcpy_btwn_bvecs(struct bio_vec *to,
 		const unsigned idxTo, const unsigned idxFrom,
 		LZ4E_stream_t_internal *dictPtr)
 {
-#ifdef LZ4E_PREMAP
+#if LZ4E_PREMAP
 	unsigned baseIdxFrom = dictPtr->srcBaseIdx;
 	unsigned baseIdxTo = dictPtr->dstBaseIdx;
 	char *addrFrom = dictPtr->srcAddrs[idxFrom - baseIdxFrom];
@@ -489,7 +489,7 @@ static FORCE_INLINE void LZ4E_memcpy_btwn_bvecs(struct bio_vec *to,
 	char *addrFrom = kmap_local_page(from->bv_page);
 	char *addrTo = kmap_local_page(to->bv_page);
 	LZ4E_memcpy(addrTo + to->bv_offset, addrFrom + from->bv_offset, len);
-#ifndef LZ4E_MULTIPAGE
+#if !LZ4E_MULTIPAGE
 	flush_dcache_page(to->bv_page);
 #endif
 	kunmap_local(addrTo);
@@ -505,7 +505,7 @@ static FORCE_INLINE void LZ4E_memcpy_from_sg(char *to,
 	unsigned toRead;
 
 	do {
-#ifdef LZ4E_MULTIPAGE
+#if LZ4E_MULTIPAGE
 		bvFrom = mp_bvec_iter_bvec(from, iter);
 #else
 		bvFrom = bvec_iter_bvec(from, iter);
@@ -528,7 +528,7 @@ static FORCE_INLINE void LZ4E_memcpy_to_sg(struct bio_vec *to,
 	unsigned toWrite;
 
 	do {
-#ifdef LZ4E_MULTIPAGE
+#if LZ4E_MULTIPAGE
 		bvTo = mp_bvec_iter_bvec(to, iter);
 #else
 		bvTo = bvec_iter_bvec(to, iter);
@@ -553,7 +553,7 @@ static FORCE_INLINE void LZ4E_memcpy_sg(struct bio_vec *to,
 	unsigned toCopy;
 
 	do {
-#ifdef LZ4E_MULTIPAGE
+#if LZ4E_MULTIPAGE
 		bvFrom = mp_bvec_iter_bvec(from, iterFrom);
 		bvTo = mp_bvec_iter_bvec(to, iterTo);
 #else
