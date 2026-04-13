@@ -164,6 +164,10 @@ ifdef GRAPH
 	GENERATE_GRAPHS_ARGS += --graph $(GRAPH)
 endif
 
+ifdef PERF_DIR
+	RUN_EXPERIMENT_ARGS += --perf-dir $(PERF_DIR)
+endif
+
 ifdef UNDER_DEV
 	RUN_EXPERIMENT_ARGS += --under-dev $(UNDER_DEV)
 endif
