@@ -347,9 +347,9 @@ class LZ4Experiment:
 
         except Exception as e:
             print(f"\nError generating graphs: {e}")
-            import traceback
+            from traceback import print_exc
 
-            traceback.print_exc()
+            print_exc()
 
     def run_experiment(self) -> None:
         """Run the complete experiment."""
@@ -366,29 +366,58 @@ class LZ4Experiment:
 
             # Get test files
             test_files = self._get_test_files()
-            print(f"\nFound {len(test_files)} test files in dataset")
+            total_files = len(test_files)
+            total_runs = total_files * len(self.COMPRESSION_TYPES) * self.args.runs
+
+            # Print experiment information
+            print("\n" + "=" * 80)
+            print("LZ4 COMPRESSION EXPERIMENT")
+            print("=" * 80)
+            print(f"Dataset directory:    {self.dataset_dir}")
+            print(f"Test files found:     {total_files}")
+            print(f"Compression types:    {', '.join(self.COMPRESSION_TYPES)}")
+            print(f"Runs per type:        {self.args.runs}")
+            print(f"Total operations:     {total_runs}")
+            print(f"Block size:           {self.args.bs} ({self.bs_bytes} bytes)")
+            print(f"Acceleration factor:  {self.args.acceleration}")
+            print(f"Underlying device:    {under_dev}")
+            print(f"Proxy device:         {self.proxy_dev}")
+            print(f"Result directory:     {self.result_dir}")
+            print(f"Graph directory:      {self.graph_dir}")
+            print("=" * 80)
 
             # Run experiments
-            for test_file in test_files:
+            for test_idx, test_file in enumerate(test_files, 1):
+                file_size = test_file.stat().st_size
+                count = self._get_count(file_size)
+
                 print(f"\n{'=' * 60}")
-                print(f"Processing test file: {test_file}")
+                print(f"Test file {test_idx}/{total_files}: {test_file}")
+                print(f"File size: {file_size} bytes")
+                print(f"Block count: {count}")
                 print(f"{'=' * 60}")
 
                 for comp_type in self.COMPRESSION_TYPES:
-                    print(f"\n  Testing compression type: {comp_type}")
+                    print(f"\n  Compression type: {comp_type}")
 
                     for run_num in range(1, self.args.runs + 1):
                         print(f"\n    Run {run_num}/{self.args.runs}")
                         self.run_single_test(test_file, comp_type, run_num)
 
             experiment_success = True
-            print("\nExperiment completed successfully!")
+            print("\n" + "=" * 60)
+            print("Experiment completed successfully!")
+            print("=" * 60)
 
         except KeyboardInterrupt:
-            print("\n\nExperiment interrupted by user")
+            print("\n\n" + "!" * 60)
+            print("Experiment interrupted by user")
+            print("!" * 60)
             experiment_success = False
         except Exception as e:
-            print(f"\nExperiment failed: {e}")
+            print(f"\n{'!' * 60}")
+            print(f"Experiment failed: {e}")
+            print(f"{'!' * 60}")
             import traceback
 
             traceback.print_exc()
@@ -401,7 +430,7 @@ class LZ4Experiment:
             elif not self.args.no_graph:
                 print("\nGraph generation skipped due to experiment failure")
             else:
-                print("Graph generation skipped (--no-graph)")
+                print("\nGraph generation skipped (--no-graph)")
 
             # Cleanup: remove proxy device and unload modules
             print("\nCleaning up kernel modules...")
