@@ -172,7 +172,9 @@ class GraphGenerator:
 
         return mean_val, std_val, avg_rel_error, max_rel_error, n
 
-    def _add_error_stats_to_plot(self, ax, all_relative_errors: List[float], max_bar_height: float):
+    def _add_error_stats_to_plot(
+        self, ax: plt.Axes, all_relative_errors: List[float], max_bar_height: float
+    ) -> None:
         """Add error statistics text box to the plot on the right side and adjust y-axis limit."""
         if all_relative_errors:
             avg_error = mean(all_relative_errors)
@@ -184,7 +186,7 @@ class GraphGenerator:
         textstr = f"Avg Relative Error: {avg_error:.2f}%\nMax Relative Error: {max_error:.2f}%"
 
         # Place text box in upper right corner
-        props = dict(boxstyle="round", facecolor="wheat", alpha=0.7)
+        props = {"boxstyle": "round", "facecolor": "wheat", "alpha": 0.7}
         ax.text(
             0.98,
             0.98,
