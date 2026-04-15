@@ -29,11 +29,10 @@ Currently, we are running the following LZ4 variations.
 2) `vect`, or Vectorized.
    To process bvecs, we will compress each of them individually, using the same API as for the previous case.
    Doing this, we eliminate the need for allocating the `src` buffer, but creating `dst` buffers is necessary for all compression variants.
-   In this case, we would allocate a single `dst` buffer for each incoming single-page segment. There, however, exist multi-page bvecs,
-   but here we treat them as a set of single-page ones for simplicity reasons. It is important to mention, that when using LZ4 there is a chance that
+   In this case, we would allocate a single `dst` buffer for each incoming multi-page bvec. It is important to mention, that when using LZ4 there is a chance that
    the data will not compress at all and will grow in size. Allocating large enough buffer for data to fit anyway (size found using `LZ4_COMPRESSBOUND` macro)
-   makes the algorithm run faster, as it doesn't need to check for buffer overflows. When we compress by single-page,
-   the memory overhead (difference of compress bound and original size) is larger compared to the Contiguous case. As for compression ratio,
+   makes the algorithm run faster, as it doesn't need to check for buffer overflows. When we compress each bvec individually,
+   the memory overhead (difference of compress bound and original size) is slightly larger compared to the Contiguous case. As for compression ratio,
    it becomes lower, because we cannot find matches in previous segments. This method is expected to have roughly the same throughput as Contiguous case,
    not taking data copying into account.
 
