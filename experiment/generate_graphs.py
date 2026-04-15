@@ -145,10 +145,65 @@ class GraphGenerator:
 
         return results
 
-    def calculate_stats(self, values: List[float]) -> Tuple[float, float]:
+    def calculate_stats(self, values: List[float]) -> Tuple[float, float, float, float, int]:
+        """
+        Calculate mean, standard deviation, average relative error, max relative error, and count.
+        Relative error = (std_dev / mean) * 100%
+        """
         if not values:
-            return 0, 0
-        return mean(values), stdev(values) if len(values) > 1 else 0
+            return 0.0, 0.0, 0.0, 0.0, 0
+
+        n = len(values)
+        if n == 1:
+            return values[0], 0.0, 0.0, 0.0, n
+
+        mean_val = mean(values)
+        std_val = stdev(values)
+
+        # Calculate relative errors for each run
+        rel_errors = []
+        for v in values:
+            if mean_val > 0:
+                rel_error = abs((v - mean_val) / mean_val) * 100.0
+                rel_errors.append(rel_error)
+
+        avg_rel_error = mean(rel_errors) if rel_errors else 0.0
+        max_rel_error = max(rel_errors) if rel_errors else 0.0
+
+        return mean_val, std_val, avg_rel_error, max_rel_error, n
+
+    def _add_error_stats_to_plot(self, ax, all_relative_errors: List[float], max_bar_height: float):
+        """Add error statistics text box to the plot on the right side and adjust y-axis limit."""
+        if all_relative_errors:
+            avg_error = mean(all_relative_errors)
+            max_error = max(all_relative_errors)
+        else:
+            avg_error = 0.0
+            max_error = 0.0
+
+        textstr = f"Avg Relative Error: {avg_error:.2f}%\nMax Relative Error: {max_error:.2f}%"
+
+        # Place text box in upper right corner
+        props = dict(boxstyle="round", facecolor="wheat", alpha=0.7)
+        ax.text(
+            0.98,
+            0.98,
+            textstr,
+            transform=ax.transAxes,
+            fontsize=9,
+            verticalalignment="top",
+            horizontalalignment="right",
+            bbox=props,
+        )
+
+        # Adjust y-axis limit to ensure enough headroom above the highest bar + error
+        current_ylim = ax.get_ylim()
+        if max_bar_height > 0:
+            # Add 18% padding above the highest point (bar + error + label)
+            # This is tighter than before
+            new_ymax = max_bar_height * 1.18
+            if new_ymax > current_ylim[1]:
+                ax.set_ylim(0, new_ymax)
 
     def plot_compression_ratio(self, results: Dict) -> None:
         """
@@ -162,6 +217,9 @@ class GraphGenerator:
         _, ax = plt.subplots(figsize=(16, 7))
         x = arange(n_files)
         width = 0.8 / n_types
+
+        all_rel_errors = []
+        max_overall_height = 0.0
 
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             means, stds = [], []
@@ -180,9 +238,11 @@ class GraphGenerator:
                         ratio = total_decomp / total_comp
                         ratios.append(ratio)
 
-                mean_val, std_val = self.calculate_stats(ratios)
+                mean_val, std_val, avg_rel_err, max_rel_err, _ = self.calculate_stats(ratios)
                 means.append(mean_val)
                 stds.append(std_val)
+                all_rel_errors.append(avg_rel_err)
+                all_rel_errors.append(max_rel_err)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
             bars = ax.bar(
@@ -199,17 +259,21 @@ class GraphGenerator:
                 error_kw={"elinewidth": 1, "capthick": 1},
             )
 
-            max_height = max(means) if means else 1
             for bar, mean_val, std_val in zip(bars, means, stds):
                 if mean_val > 0:
+                    # Tighter spacing: only 1% of mean value as gap
+                    label_y = bar.get_height() + std_val + (mean_val * 0.01)
                     ax.text(
                         bar.get_x() + bar.get_width() / 2.0,
-                        bar.get_height() + std_val + max_height * 0.02,
+                        label_y,
                         f"{mean_val:.3f}",
                         ha="center",
                         va="bottom",
                         fontsize=7,
                     )
+                    max_overall_height = max(max_overall_height, label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
         ax.set_ylabel("Compression Ratio", fontsize=12, fontweight="bold")
@@ -242,6 +306,9 @@ class GraphGenerator:
         x = arange(n_files)
         width = 0.8 / n_types
 
+        all_rel_errors = []
+        max_overall_height = 0.0
+
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             means, stds = [], []
 
@@ -262,9 +329,11 @@ class GraphGenerator:
                         mem = total_mem / successful_reqs
                         mem_per_req.append(mem / 1024)  # Convert to KB
 
-                mean_val, std_val = self.calculate_stats(mem_per_req)
+                mean_val, std_val, avg_rel_err, max_rel_err, _ = self.calculate_stats(mem_per_req)
                 means.append(mean_val)
                 stds.append(std_val)
+                all_rel_errors.append(avg_rel_err)
+                all_rel_errors.append(max_rel_err)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
             bars = ax.bar(
@@ -281,17 +350,21 @@ class GraphGenerator:
                 error_kw={"elinewidth": 1, "capthick": 1},
             )
 
-            max_height = max(means) if means else 1
             for bar, mean_val, std_val in zip(bars, means, stds):
                 if mean_val > 0:
+                    # Tighter spacing: only 1% of mean value as gap
+                    label_y = bar.get_height() + std_val + (mean_val * 0.01)
                     ax.text(
                         bar.get_x() + bar.get_width() / 2.0,
-                        bar.get_height() + std_val + max_height * 0.02,
+                        label_y,
                         f"{mean_val:.1f}",
                         ha="center",
                         va="bottom",
                         fontsize=7,
                     )
+                    max_overall_height = max(max_overall_height, label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
         ax.set_ylabel("Memory Usage per Request (KB)", fontsize=12, fontweight="bold")
@@ -319,6 +392,9 @@ class GraphGenerator:
         _, ax = plt.subplots(figsize=(16, 7))
         x = arange(n_files)
         width = 0.8 / n_types
+
+        all_rel_errors = []
+        max_overall_height = 0.0
 
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             base_throughputs = []  # Actual throughput (with copy time)
@@ -353,14 +429,18 @@ class GraphGenerator:
                             tp_ideal = (read_m.decomp_size / 1e6) / (read_m.comp_ns / 1e9)
                             values_ideal.append(tp_ideal)
 
-                    mean_actual, std_actual = self.calculate_stats(values_actual)
-                    mean_ideal, _ = self.calculate_stats(values_ideal)
+                    mean_actual, std_actual, avg_rel_err, max_rel_err, _ = self.calculate_stats(
+                        values_actual
+                    )
+                    mean_ideal, _, _, _, _ = self.calculate_stats(values_ideal)
 
                     overhead = mean_ideal - mean_actual if mean_ideal > mean_actual else 0
 
                     base_throughputs.append(mean_actual)
                     copy_overheads.append(overhead)
                     base_stds.append(std_actual)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
 
                 elif operation == "write":
                     # Use write metrics for compression during write
@@ -380,14 +460,18 @@ class GraphGenerator:
                             tp_ideal = (write_m.decomp_size / 1e6) / (write_m.comp_ns / 1e9)
                             values_ideal.append(tp_ideal)
 
-                    mean_actual, std_actual = self.calculate_stats(values_actual)
-                    mean_ideal, _ = self.calculate_stats(values_ideal)
+                    mean_actual, std_actual, avg_rel_err, max_rel_err, _ = self.calculate_stats(
+                        values_actual
+                    )
+                    mean_ideal, _, _, _, _ = self.calculate_stats(values_ideal)
 
                     overhead = mean_ideal - mean_actual if mean_ideal > mean_actual else 0
 
                     base_throughputs.append(mean_actual)
                     copy_overheads.append(overhead)
                     base_stds.append(std_actual)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
 
                 elif operation == "overall":
                     # Combine read and write metrics for overall compression
@@ -411,14 +495,18 @@ class GraphGenerator:
                             tp_ideal = (run_decomp / 1e6) / (run_comp_ns / 1e9)
                             per_run_ideal.append(tp_ideal)
 
-                    mean_actual, std_actual = self.calculate_stats(per_run_actual)
-                    mean_ideal, _ = self.calculate_stats(per_run_ideal)
+                    mean_actual, std_actual, avg_rel_err, max_rel_err, _ = self.calculate_stats(
+                        per_run_actual
+                    )
+                    mean_ideal, _, _, _, _ = self.calculate_stats(per_run_ideal)
 
                     overhead = mean_ideal - mean_actual if mean_ideal > mean_actual else 0
 
                     base_throughputs.append(mean_actual)
                     copy_overheads.append(overhead)
                     base_stds.append(std_actual)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
             has_overhead = any(o > 0 for o in copy_overheads)
@@ -451,13 +539,14 @@ class GraphGenerator:
                 )
 
                 # Label only the actual throughput value (bottom bar)
-                max_height = max(base_throughputs) if base_throughputs else 1
                 for i, (base, std) in enumerate(zip(base_throughputs, base_stds)):
                     if base > 0:
-                        label_y = base + std + (max_height * 0.02)
+                        # Tighter spacing: only 1% of base value as gap
+                        label_y = base + std + (base * 0.01)
                         ax.text(
                             pos[i], label_y, f"{base:.1f}", ha="center", va="bottom", fontsize=7
                         )
+                        max_overall_height = max(max_overall_height, label_y)
             else:
                 bars = ax.bar(
                     pos,
@@ -473,17 +562,21 @@ class GraphGenerator:
                     error_kw={"elinewidth": 1, "capthick": 1},
                 )
 
-                max_height = max(base_throughputs) if base_throughputs else 1
                 for bar, val, std in zip(bars, base_throughputs, base_stds):
                     if val > 0:
+                        # Tighter spacing: only 1% of val as gap
+                        label_y = bar.get_height() + std + (val * 0.01)
                         ax.text(
                             bar.get_x() + bar.get_width() / 2.0,
-                            bar.get_height() + std + max_height * 0.02,
+                            label_y,
                             f"{val:.1f}",
                             ha="center",
                             va="bottom",
                             fontsize=7,
                         )
+                        max_overall_height = max(max_overall_height, label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
             "read": "Compression Throughput (Read Operation)",
@@ -523,6 +616,9 @@ class GraphGenerator:
         x = arange(n_files)
         width = 0.8 / n_types
 
+        all_rel_errors = []
+        max_overall_height = 0.0
+
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             base_throughputs = []  # Actual throughput (with copy time)
             copy_overheads = []  # Throughput lost to copy time
@@ -554,14 +650,18 @@ class GraphGenerator:
                             tp_ideal = (read_m.comp_size / 1e6) / (read_m.decomp_ns / 1e9)
                             values_ideal.append(tp_ideal)
 
-                    mean_actual, std_actual = self.calculate_stats(values_actual)
-                    mean_ideal, _ = self.calculate_stats(values_ideal)
+                    mean_actual, std_actual, avg_rel_err, max_rel_err, _ = self.calculate_stats(
+                        values_actual
+                    )
+                    mean_ideal, _, _, _, _ = self.calculate_stats(values_ideal)
 
                     overhead = mean_ideal - mean_actual if mean_ideal > mean_actual else 0
 
                     base_throughputs.append(mean_actual)
                     copy_overheads.append(overhead)
                     base_stds.append(std_actual)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
 
                 elif operation == "write":
                     # Use write metrics for decompression during write
@@ -581,14 +681,18 @@ class GraphGenerator:
                             tp_ideal = (write_m.comp_size / 1e6) / (write_m.decomp_ns / 1e9)
                             values_ideal.append(tp_ideal)
 
-                    mean_actual, std_actual = self.calculate_stats(values_actual)
-                    mean_ideal, _ = self.calculate_stats(values_ideal)
+                    mean_actual, std_actual, avg_rel_err, max_rel_err, _ = self.calculate_stats(
+                        values_actual
+                    )
+                    mean_ideal, _, _, _, _ = self.calculate_stats(values_ideal)
 
                     overhead = mean_ideal - mean_actual if mean_ideal > mean_actual else 0
 
                     base_throughputs.append(mean_actual)
                     copy_overheads.append(overhead)
                     base_stds.append(std_actual)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
 
                 elif operation == "overall":
                     # Combine read and write metrics for overall decompression
@@ -612,14 +716,18 @@ class GraphGenerator:
                             tp_ideal = (run_comp / 1e6) / (run_decomp_ns / 1e9)
                             per_run_ideal.append(tp_ideal)
 
-                    mean_actual, std_actual = self.calculate_stats(per_run_actual)
-                    mean_ideal, _ = self.calculate_stats(per_run_ideal)
+                    mean_actual, std_actual, avg_rel_err, max_rel_err, _ = self.calculate_stats(
+                        per_run_actual
+                    )
+                    mean_ideal, _, _, _, _ = self.calculate_stats(per_run_ideal)
 
                     overhead = mean_ideal - mean_actual if mean_ideal > mean_actual else 0
 
                     base_throughputs.append(mean_actual)
                     copy_overheads.append(overhead)
                     base_stds.append(std_actual)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
             has_overhead = any(o > 0 for o in copy_overheads)
@@ -652,13 +760,14 @@ class GraphGenerator:
                 )
 
                 # Label only the actual throughput value (bottom bar)
-                max_height = max(base_throughputs) if base_throughputs else 1
                 for i, (base, std) in enumerate(zip(base_throughputs, base_stds)):
                     if base > 0:
-                        label_y = base + std + (max_height * 0.02)
+                        # Tighter spacing: only 1% of base value as gap
+                        label_y = base + std + (base * 0.01)
                         ax.text(
                             pos[i], label_y, f"{base:.1f}", ha="center", va="bottom", fontsize=7
                         )
+                        max_overall_height = max(max_overall_height, label_y)
             else:
                 bars = ax.bar(
                     pos,
@@ -674,17 +783,21 @@ class GraphGenerator:
                     error_kw={"elinewidth": 1, "capthick": 1},
                 )
 
-                max_height = max(base_throughputs) if base_throughputs else 1
                 for bar, val, std in zip(bars, base_throughputs, base_stds):
                     if val > 0:
+                        # Tighter spacing: only 1% of val as gap
+                        label_y = bar.get_height() + std + (val * 0.01)
                         ax.text(
                             bar.get_x() + bar.get_width() / 2.0,
-                            bar.get_height() + std + max_height * 0.02,
+                            label_y,
                             f"{val:.1f}",
                             ha="center",
                             va="bottom",
                             fontsize=7,
                         )
+                        max_overall_height = max(max_overall_height, label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
             "read": "Decompression Throughput (Read Operation)",
@@ -726,6 +839,9 @@ class GraphGenerator:
         x = arange(n_files)
         width = 0.8 / n_types
 
+        all_rel_errors = []
+        max_overall_height = 0.0
+
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             means = []
             stds = []
@@ -744,9 +860,11 @@ class GraphGenerator:
                         if read_m.total_ns > 0 and read_m.decomp_size > 0:
                             tp = (read_m.decomp_size / 1e6) / (read_m.total_ns / 1e9)
                             values.append(tp)
-                    mean_val, std_val = self.calculate_stats(values)
+                    mean_val, std_val, avg_rel_err, max_rel_err, _ = self.calculate_stats(values)
                     means.append(mean_val)
                     stds.append(std_val)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
 
                 elif operation == "write":
                     # Total throughput for write operations
@@ -755,9 +873,11 @@ class GraphGenerator:
                         if write_m.total_ns > 0 and write_m.decomp_size > 0:
                             tp = (write_m.decomp_size / 1e6) / (write_m.total_ns / 1e9)
                             values.append(tp)
-                    mean_val, std_val = self.calculate_stats(values)
+                    mean_val, std_val, avg_rel_err, max_rel_err, _ = self.calculate_stats(values)
                     means.append(mean_val)
                     stds.append(std_val)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
 
                 elif operation == "overall":
                     # Overall total throughput (combine read and write)
@@ -778,9 +898,11 @@ class GraphGenerator:
 
                     if total_time > 0:
                         overall_tp = (total_decomp / 1e6) / (total_time / 1e9)
-                        _, std_val = self.calculate_stats(per_run_tp)
+                        _, std_val, avg_rel_err, max_rel_err, _ = self.calculate_stats(per_run_tp)
                         means.append(overall_tp)
                         stds.append(std_val)
+                        all_rel_errors.append(avg_rel_err)
+                        all_rel_errors.append(max_rel_err)
                     else:
                         means.append(0)
                         stds.append(0)
@@ -800,17 +922,21 @@ class GraphGenerator:
                 error_kw={"elinewidth": 1, "capthick": 1},
             )
 
-            max_height = max(means) if means else 1
             for bar, mean_val, std_val in zip(bars, means, stds):
                 if mean_val > 0:
+                    # Tighter spacing: only 1% of mean value as gap
+                    label_y = bar.get_height() + std_val + (mean_val * 0.01)
                     ax.text(
                         bar.get_x() + bar.get_width() / 2.0,
-                        bar.get_height() + std_val + max_height * 0.02,
+                        label_y,
                         f"{mean_val:.1f}",
                         ha="center",
                         va="bottom",
                         fontsize=7,
                     )
+                    max_overall_height = max(max_overall_height, label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
             "read": "Total Throughput (Read Operation)",
