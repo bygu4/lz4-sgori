@@ -140,7 +140,7 @@ class LZ4Experiment:
 
     def _setup_under_device(self) -> Union[Any, str]:
         """Setup underlying device if not provided."""
-        if self.under_dev == "None" or self.under_dev is None:
+        if not self.under_dev or self.under_dev == "None":
             dev_size_kb = self.args.dev_size
             print(f"Creating RAM device of size {dev_size_kb} KB...")
             run(
@@ -276,7 +276,7 @@ class LZ4Experiment:
 
     def _run_with_perf(self, operation_name: str, cmd: List[str], perf_subdir: Path) -> bool:
         """Run a command with perf profiling if perf_dir is enabled."""
-        if self.perf_dir is None:
+        if not self.perf_dir:
             # No perf profiling, just run the command directly
             result = run(cmd, capture_output=True)
             return result.returncode == 0
@@ -389,8 +389,8 @@ class LZ4Experiment:
 
             # Write test file to proxy device
             print(f"    Writing {test_file.name} to proxy device...")
-            if (
-                not self._run_dd_write_with_perf(test_file, count, perf_subdir)
+            if not (
+                self._run_dd_write_with_perf(test_file, count, perf_subdir)
                 if perf_subdir
                 else self._run_dd_write(test_file, count)
             ):
@@ -398,8 +398,8 @@ class LZ4Experiment:
 
             # Read from proxy device
             print(f"    Reading from proxy device to {tmp_output.name}...")
-            if (
-                not self._run_dd_read_with_perf(tmp_output, count, perf_subdir)
+            if not (
+                self._run_dd_read_with_perf(tmp_output, count, perf_subdir)
                 if perf_subdir
                 else self._run_dd_read(tmp_output, count)
             ):
@@ -597,7 +597,6 @@ def main() -> None:
     parser.add_argument("--no-graph", action="store_true", help="Skip graph generation")
     parser.add_argument(
         "--perf-dir",
-        default=None,
         help="Directory to save perf profiling data)",
     )
 
