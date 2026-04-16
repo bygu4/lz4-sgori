@@ -43,6 +43,17 @@ FIX_TIDY := ./$(SCRIPTS_DIR_NAME)/fix_with_clang_tidy.sh
 STATS_PPRINT := ./$(SCRIPTS_DIR_NAME)/stats_pretty_print.sh
 WIKI_SYNC := ./$(SCRIPTS_DIR_NAME)/synchronize_wiki.sh
 
+# Bvec in-advance mapping optimization
+__LZ4E_PREMAP ?= 0
+
+ifeq ($(LZ4E_PREMAP),)
+	__LZ4E_PREMAP := 0
+else ifneq ($(LZ4E_PREMAP),0)
+	__LZ4E_PREMAP := 1
+endif
+
+export __LZ4E_PREMAP
+
 # ---------------- All, lib and block dev ----------------
 
 .PHONY: all
@@ -134,15 +145,15 @@ bdev-reinsert:
 
 .PHONY: test
 test:
-	$(MAKE) && $(TEST_ALL)
+	$(TEST_ALL)
 
 .PHONY: test-fast
 test-fast:
-	$(MAKE) && $(TEST_FAST)
+	$(TEST_FAST)
 
 .PHONY: test-fio
 test-fio:
-	$(MAKE) && $(TEST_FIO)
+	$(TEST_FIO)
 
 # ---------------- Experiments ----------------
 
@@ -199,7 +210,7 @@ endif
 
 .PHONY: expt
 expt:
-	$(MAKE) && $(RUN_EXPERIMENT) $(RUN_EXPERIMENT_ARGS)
+	$(RUN_EXPERIMENT) $(RUN_EXPERIMENT_ARGS)
 
 .PHONY: expt-graph
 expt-graph:

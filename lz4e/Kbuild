@@ -1,4 +1,10 @@
 include $(PWD)/flags.mk
 
+ifeq ($(__LZ4E_PREMAP),1)
+	ccflags-y += -D __LZ4E_PREMAP
+endif
+
+$(info LZ4E_PREMAP = $(__LZ4E_PREMAP))
+
 obj-m += lz4e_compress.o
 obj-m += lz4e_decompress.o

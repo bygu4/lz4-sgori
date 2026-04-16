@@ -239,13 +239,11 @@ static FORCE_INLINE void LZ4E_compress_end(
 	const struct bvec_iter dstStart,
 	LZ4E_stream_t_internal *dictPtr)
 {
-#if LZ4E_MULTIPAGE
 	struct bio_vec bvec;
 	struct bvec_iter iter;
 
 	for_each_bvec (bvec, dst, iter, dstStart)
 		flush_dcache_page(bvec.bv_page);
-#endif
 
 #if LZ4E_PREMAP
 	for (int i = BIO_MAX_VECS - 1; i >= 0; --i) {
@@ -593,7 +591,7 @@ _err:
 	return 0;
 }
 
-static FORCE_INLINE int LZ4E_compress_fast_extState(
+static int LZ4E_compress_fast_extState(
 	void *state,
 	const struct bio_vec *src,
 	struct bio_vec *dst,

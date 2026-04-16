@@ -13,6 +13,12 @@ endif
 
 $(info KBUILD_EXTRA_SYMBOLS = $(KBUILD_EXTRA_SYMBOLS))
 
+ifeq ($(__LZ4E_PREMAP),1)
+	ccflags-y += -D __LZ4E_PREMAP
+endif
+
+$(info LZ4E_PREMAP = $(__LZ4E_PREMAP))
+
 lz4e_bdev-y := lz4e_module.o \
 	lz4e_dev.o \
 	lz4e_under_dev.o \
