@@ -39,7 +39,6 @@
 
 
 #include <linux/highmem.h>
-#include <linux/cacheflush.h>
 #include <linux/byteorder/generic.h>
 #include <linux/compiler.h>
 #include <linux/bio.h>
@@ -467,9 +466,6 @@ static FORCE_INLINE void LZ4E_memcpy_to_bvec(struct bio_vec *to,
 #else
 	char *addrTo = kmap_local_page(to->bv_page);
 	LZ4E_memcpy(addrTo + to->bv_offset, from, len);
-#if !LZ4E_MULTIPAGE
-	flush_dcache_page(to->bv_page);
-#endif
 	kunmap_local(addrTo);
 #endif
 }
@@ -489,9 +485,6 @@ static FORCE_INLINE void LZ4E_memcpy_btwn_bvecs(struct bio_vec *to,
 	char *addrFrom = kmap_local_page(from->bv_page);
 	char *addrTo = kmap_local_page(to->bv_page);
 	LZ4E_memcpy(addrTo + to->bv_offset, addrFrom + from->bv_offset, len);
-#if !LZ4E_MULTIPAGE
-	flush_dcache_page(to->bv_page);
-#endif
 	kunmap_local(addrTo);
 	kunmap_local(addrFrom);
 #endif

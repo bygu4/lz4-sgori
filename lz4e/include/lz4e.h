@@ -16,7 +16,7 @@
 #endif
 
 /* whether to map pages in advance */
-#if LZ4E_MULTIPAGE
+#ifdef __LZ4E_PREMAP
 #define LZ4E_PREMAP 1
 #else
 #define LZ4E_PREMAP 0
