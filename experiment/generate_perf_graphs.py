@@ -217,13 +217,66 @@ class PerfGraphGenerator:
 
         return True
 
-    def calculate_stats(self, values: List[float]) -> Tuple[float, float, int]:
+    def calculate_stats(self, values: List[float]) -> Tuple[float, float, float, float, int]:
+        """
+        Calculate mean, standard deviation, average relative error, max relative error, and count.
+        Relative error = |(value - mean) / mean| * 100%
+        """
         if not values:
-            return 0.0, 0.0, 0
+            return 0.0, 0.0, 0.0, 0.0, 0
+
         n = len(values)
         if n == 1:
-            return values[0], 0.0, n
-        return mean(values), stdev(values), n
+            return values[0], 0.0, 0.0, 0.0, n
+
+        mean_val = mean(values)
+        std_val = stdev(values)
+
+        # Calculate relative errors for each run
+        rel_errors = []
+        for v in values:
+            if mean_val > 0:
+                rel_error = abs((v - mean_val) / mean_val) * 100.0
+                rel_errors.append(rel_error)
+
+        avg_rel_error = mean(rel_errors) if rel_errors else 0.0
+        max_rel_error = max(rel_errors) if rel_errors else 0.0
+
+        return mean_val, std_val, avg_rel_error, max_rel_error, n
+
+    def _add_error_stats_to_plot(
+        self, ax: plt.Axes, all_relative_errors: List[float], max_bar_height: float
+    ) -> None:
+        """Add error statistics text box to the plot on the right side and adjust y-axis limit."""
+        if all_relative_errors:
+            avg_error = mean(all_relative_errors)
+            max_error = max(all_relative_errors)
+        else:
+            avg_error = 0.0
+            max_error = 0.0
+
+        textstr = f"Avg Relative Error: {avg_error:.2f}%\nMax Relative Error: {max_error:.2f}%"
+
+        # Place text box in upper right corner
+        props = {"boxstyle": "round", "facecolor": "wheat", "alpha": 0.7}
+        ax.text(
+            0.98,
+            0.98,
+            textstr,
+            transform=ax.transAxes,
+            fontsize=9,
+            verticalalignment="top",
+            horizontalalignment="right",
+            bbox=props,
+        )
+
+        # Adjust y-axis limit to ensure enough headroom above the highest bar + error
+        if max_bar_height > 0:
+            # Add 18% padding above the highest point
+            new_ymax = max_bar_height * 1.18
+            current_ylim = ax.get_ylim()
+            if new_ymax > current_ylim[1]:
+                ax.set_ylim(0, new_ymax)
 
     def _format_large_number(self, num: float) -> str:
         if num >= 1e9:
@@ -249,17 +302,16 @@ class PerfGraphGenerator:
         width = 0.8 / n_types
 
         bars_plotted = False
-        all_max_values = []
+        all_rel_errors = []
+        max_overall_height = 0.0
 
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
-            means, stds, counts = [], [], []
-
+            means, stds = [], []
             for test_file in test_files:
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list:
                     means.append(0.0)
                     stds.append(0.0)
-                    counts.append(0)
                     continue
 
                 ipc_values = []
@@ -276,12 +328,11 @@ class PerfGraphGenerator:
                     if ipc > 0:
                         ipc_values.append(ipc)
 
-                mean_val, std_val, cnt = self.calculate_stats(ipc_values)
+                mean_val, std_val, avg_rel_err, max_rel_err, _ = self.calculate_stats(ipc_values)
                 means.append(mean_val)
                 stds.append(std_val)
-                counts.append(cnt)
-                if mean_val > 0:
-                    all_max_values.append(mean_val + (std_val if cnt > 1 else 0))
+                all_rel_errors.append(avg_rel_err)
+                all_rel_errors.append(max_rel_err)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
@@ -289,21 +340,18 @@ class PerfGraphGenerator:
                 bars_plotted = True
                 ax.bar(pos, means, width, label=self.COMPRESSION_NAMES[comp_type],
                        color=self.COLORS[comp_type],
-                       yerr=[s if s > 0 and c > 1 else 0 for s, c in zip(stds, counts)],
+                       yerr=[s if s > 0 else 0 for s in stds],
                        capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
                        error_kw={'elinewidth': 1, 'capthick': 1})
 
-        max_top = max(all_max_values) if all_max_values else 1
-        label_offset = max_top * 0.02
-
+        # Add value labels above error bars
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
-            means, stds, counts = [], [], []
+            means, stds = [], []
             for test_file in test_files:
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list:
                     means.append(0.0)
                     stds.append(0.0)
-                    counts.append(0)
                     continue
                 ipc_values = []
                 for read_perf, write_perf in metrics_list:
@@ -317,22 +365,23 @@ class PerfGraphGenerator:
                         ipc = total_inst / total_cycles if total_cycles > 0 else 0
                     if ipc > 0:
                         ipc_values.append(ipc)
-                mean_val, std_val, cnt = self.calculate_stats(ipc_values)
+                mean_val, std_val, _, _, _ = self.calculate_stats(ipc_values)
                 means.append(mean_val)
                 stds.append(std_val)
-                counts.append(cnt)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
-            for i, (m, s, c) in enumerate(zip(means, stds, counts)):
-                if m > 0 and c > 0:
-                    top_of_whisker = m + (s if c > 1 else 0)
-                    label_y = top_of_whisker + label_offset
+            for i, (m, s) in enumerate(zip(means, stds)):
+                if m > 0:
+                    label_y = m + s + (m * 0.01)
                     ax.text(pos[i], label_y, f"{m:.3f}",
                             ha="center", va="bottom", fontsize=7)
+                    max_overall_height = max(max_overall_height, label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
-            "read": "Instructions Per Cycle (Read)",
-            "write": "Instructions Per Cycle (Write)",
+            "read": "Instructions Per Cycle (Read Operation)",
+            "write": "Instructions Per Cycle (Write Operation)",
             "overall": "Instructions Per Cycle (Overall)",
         }
 
@@ -347,9 +396,6 @@ class PerfGraphGenerator:
 
         ax.grid(True, alpha=0.3, axis="y", linestyle="--")
         ax.set_axisbelow(True)
-
-        if bars_plotted and all_max_values:
-            ax.set_ylim(0, max(all_max_values) * 1.1)
 
         plt.tight_layout()
         output_path = self.graph_dir / f"ipc_{operation}.svg"
@@ -375,17 +421,16 @@ class PerfGraphGenerator:
         width = 0.8 / n_types
 
         bars_plotted = False
-        all_max_values = []
+        all_rel_errors = []
+        max_overall_height = 0.0
 
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
-            means, stds, counts = [], [], []
-
+            means, stds = [], []
             for test_file in test_files:
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list:
                     means.append(0.0)
                     stds.append(0.0)
-                    counts.append(0)
                     continue
 
                 cycle_values = []
@@ -400,12 +445,11 @@ class PerfGraphGenerator:
                     if val > 0:
                         cycle_values.append(val)
 
-                mean_val, std_val, cnt = self.calculate_stats(cycle_values)
+                mean_val, std_val, avg_rel_err, max_rel_err, _ = self.calculate_stats(cycle_values)
                 means.append(mean_val)
                 stds.append(std_val)
-                counts.append(cnt)
-                if mean_val > 0:
-                    all_max_values.append(mean_val + (std_val if cnt > 1 else 0))
+                all_rel_errors.append(avg_rel_err)
+                all_rel_errors.append(max_rel_err)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
@@ -413,21 +457,18 @@ class PerfGraphGenerator:
                 bars_plotted = True
                 ax.bar(pos, means, width, label=self.COMPRESSION_NAMES[comp_type],
                        color=self.COLORS[comp_type],
-                       yerr=[s if s > 0 and c > 1 else 0 for s, c in zip(stds, counts)],
+                       yerr=[s if s > 0 else 0 for s in stds],
                        capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
                        error_kw={'elinewidth': 1, 'capthick': 1})
 
-        max_top = max(all_max_values) if all_max_values else 1
-        label_offset = max_top * 0.02
-
+        # Add value labels above error bars
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
-            means, stds, counts = [], [], []
+            means, stds = [], []
             for test_file in test_files:
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list:
                     means.append(0.0)
                     stds.append(0.0)
-                    counts.append(0)
                     continue
                 cycle_values = []
                 for read_perf, write_perf in metrics_list:
@@ -439,23 +480,24 @@ class PerfGraphGenerator:
                         val = read_perf.cycles + write_perf.cycles
                     if val > 0:
                         cycle_values.append(val)
-                mean_val, std_val, cnt = self.calculate_stats(cycle_values)
+                mean_val, std_val, _, _, _ = self.calculate_stats(cycle_values)
                 means.append(mean_val)
                 stds.append(std_val)
-                counts.append(cnt)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
-            for i, (m, s, c) in enumerate(zip(means, stds, counts)):
-                if m > 0 and c > 0:
-                    top_of_whisker = m + (s if c > 1 else 0)
-                    label_y = top_of_whisker + label_offset
+            for i, (m, s) in enumerate(zip(means, stds)):
+                if m > 0:
+                    label_y = m + s + (m * 0.01)
                     label = self._format_large_number(m)
                     ax.text(pos[i], label_y, label,
                             ha="center", va="bottom", fontsize=7)
+                    max_overall_height = max(max_overall_height, label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
-            "read": "CPU Cycles (Read)",
-            "write": "CPU Cycles (Write)",
+            "read": "CPU Cycles (Read Operation)",
+            "write": "CPU Cycles (Write Operation)",
             "overall": "CPU Cycles (Overall)",
         }
 
@@ -471,9 +513,8 @@ class PerfGraphGenerator:
         ax.grid(True, alpha=0.3, axis="y", linestyle="--")
         ax.set_axisbelow(True)
 
-        if bars_plotted and all_max_values:
+        if bars_plotted:
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self._format_large_number(x)))
-            ax.set_ylim(0, max(all_max_values) * 1.1)
 
         plt.tight_layout()
         output_path = self.graph_dir / f"cycles_{operation}.svg"
@@ -499,17 +540,16 @@ class PerfGraphGenerator:
         width = 0.8 / n_types
 
         bars_plotted = False
-        all_max_values = []
+        all_rel_errors = []
+        max_overall_height = 0.0
 
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
-            means, stds, counts = [], [], []
-
+            means, stds = [], []
             for test_file in test_files:
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list:
                     means.append(0.0)
                     stds.append(0.0)
-                    counts.append(0)
                     continue
 
                 inst_values = []
@@ -524,12 +564,11 @@ class PerfGraphGenerator:
                     if val > 0:
                         inst_values.append(val)
 
-                mean_val, std_val, cnt = self.calculate_stats(inst_values)
+                mean_val, std_val, avg_rel_err, max_rel_err, _ = self.calculate_stats(inst_values)
                 means.append(mean_val)
                 stds.append(std_val)
-                counts.append(cnt)
-                if mean_val > 0:
-                    all_max_values.append(mean_val + (std_val if cnt > 1 else 0))
+                all_rel_errors.append(avg_rel_err)
+                all_rel_errors.append(max_rel_err)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
@@ -537,21 +576,18 @@ class PerfGraphGenerator:
                 bars_plotted = True
                 ax.bar(pos, means, width, label=self.COMPRESSION_NAMES[comp_type],
                        color=self.COLORS[comp_type],
-                       yerr=[s if s > 0 and c > 1 else 0 for s, c in zip(stds, counts)],
+                       yerr=[s if s > 0 else 0 for s in stds],
                        capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
                        error_kw={'elinewidth': 1, 'capthick': 1})
 
-        max_top = max(all_max_values) if all_max_values else 1
-        label_offset = max_top * 0.02
-
+        # Add value labels above error bars
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
-            means, stds, counts = [], [], []
+            means, stds = [], []
             for test_file in test_files:
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list:
                     means.append(0.0)
                     stds.append(0.0)
-                    counts.append(0)
                     continue
                 inst_values = []
                 for read_perf, write_perf in metrics_list:
@@ -563,23 +599,24 @@ class PerfGraphGenerator:
                         val = read_perf.instructions + write_perf.instructions
                     if val > 0:
                         inst_values.append(val)
-                mean_val, std_val, cnt = self.calculate_stats(inst_values)
+                mean_val, std_val, _, _, _ = self.calculate_stats(inst_values)
                 means.append(mean_val)
                 stds.append(std_val)
-                counts.append(cnt)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
-            for i, (m, s, c) in enumerate(zip(means, stds, counts)):
-                if m > 0 and c > 0:
-                    top_of_whisker = m + (s if c > 1 else 0)
-                    label_y = top_of_whisker + label_offset
+            for i, (m, s) in enumerate(zip(means, stds)):
+                if m > 0:
+                    label_y = m + s + (m * 0.01)
                     label = self._format_large_number(m)
                     ax.text(pos[i], label_y, label,
                             ha="center", va="bottom", fontsize=7)
+                    max_overall_height = max(max_overall_height, label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
-            "read": "Instructions Executed (Read)",
-            "write": "Instructions Executed (Write)",
+            "read": "Instructions Executed (Read Operation)",
+            "write": "Instructions Executed (Write Operation)",
             "overall": "Instructions Executed (Overall)",
         }
 
@@ -595,9 +632,8 @@ class PerfGraphGenerator:
         ax.grid(True, alpha=0.3, axis="y", linestyle="--")
         ax.set_axisbelow(True)
 
-        if bars_plotted and all_max_values:
+        if bars_plotted:
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self._format_large_number(x)))
-            ax.set_ylim(0, max(all_max_values) * 1.1)
 
         plt.tight_layout()
         output_path = self.graph_dir / f"instructions_{operation}.svg"
@@ -624,13 +660,14 @@ class PerfGraphGenerator:
         width = 0.8 / n_types
 
         bars_plotted = False
-        all_max_values = []
+        all_rel_errors = []
+        max_overall_height = 0.0
 
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             hits_means = []
             misses_means = []
-            totals = []           # Total branches (hits + misses)
-            totals_stds = []      # Standard deviation of total branches
+            totals = []
+            totals_stds = []
             miss_rates = []
             counts = []
 
@@ -664,20 +701,29 @@ class PerfGraphGenerator:
                         total_vals.append(branches)
                         rate_vals.append((misses / branches) * 100.0)
 
-                h_mean, h_std, cnt = self.calculate_stats(hits_vals)
-                m_mean, _, _ = self.calculate_stats(misses_vals)
-                t_mean, t_std, _ = self.calculate_stats(total_vals)
-                r_mean, _, _ = self.calculate_stats(rate_vals)
+                # Unpack all 5 values from calculate_stats
+                h_mean, h_std, h_avg_rel, h_max_rel, h_cnt = self.calculate_stats(hits_vals)
+                m_mean, m_std, m_avg_rel, m_max_rel, m_cnt = self.calculate_stats(misses_vals)
+                t_mean, t_std, t_avg_rel, t_max_rel, t_cnt = self.calculate_stats(total_vals)
+                r_mean = mean(rate_vals) if rate_vals else 0.0
 
                 hits_means.append(h_mean)
                 misses_means.append(m_mean)
                 totals.append(t_mean)
-                totals_stds.append(t_std if cnt > 1 else 0.0)
+                totals_stds.append(t_std)
                 miss_rates.append(r_mean)
-                counts.append(cnt)
+                counts.append(t_cnt)
 
-                if t_mean > 0:
-                    all_max_values.append(t_mean + (t_std if cnt > 1 else 0))
+                # Collect relative errors
+                if h_avg_rel > 0:
+                    all_rel_errors.append(h_avg_rel)
+                    all_rel_errors.append(h_max_rel)
+                if m_avg_rel > 0:
+                    all_rel_errors.append(m_avg_rel)
+                    all_rel_errors.append(m_max_rel)
+                if t_avg_rel > 0:
+                    all_rel_errors.append(t_avg_rel)
+                    all_rel_errors.append(t_max_rel)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
@@ -698,7 +744,7 @@ class PerfGraphGenerator:
                         ax.errorbar(pos[i], total, yerr=total_std, fmt='none',
                                    ecolor='black', capsize=3, capthick=1, elinewidth=1)
 
-        max_top = max(all_max_values) if all_max_values else 1
+        max_top = max([t + s for t, s in zip(totals, totals_stds)]) if totals else 1
         label_offset = max_top * 0.02
 
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
@@ -738,17 +784,17 @@ class PerfGraphGenerator:
                         total_vals.append(branches)
                         rate_vals.append((misses / branches) * 100.0)
 
-                h_mean, h_std, cnt = self.calculate_stats(hits_vals)
-                m_mean, _, _ = self.calculate_stats(misses_vals)
-                t_mean, t_std, _ = self.calculate_stats(total_vals)
-                r_mean, _, _ = self.calculate_stats(rate_vals)
+                h_mean, h_std, h_avg_rel, h_max_rel, h_cnt = self.calculate_stats(hits_vals)
+                m_mean, m_std, m_avg_rel, m_max_rel, m_cnt = self.calculate_stats(misses_vals)
+                t_mean, t_std, t_avg_rel, t_max_rel, t_cnt = self.calculate_stats(total_vals)
+                r_mean = mean(rate_vals) if rate_vals else 0.0
 
                 hits_means.append(h_mean)
                 misses_means.append(m_mean)
                 totals.append(t_mean)
-                totals_stds.append(t_std if cnt > 1 else 0.0)
+                totals_stds.append(t_std)
                 miss_rates.append(r_mean)
-                counts.append(cnt)
+                counts.append(t_cnt)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
@@ -759,15 +805,20 @@ class PerfGraphGenerator:
                     label_y = top_of_whisker + label_offset
                     ax.text(pos[i], label_y, self._format_large_number(total),
                             ha="center", va="bottom", fontsize=7)
+                    max_overall_height = max(max_overall_height, label_y)
 
-            # Add miss rate labels (centered on the miss bar)
-            for i, (hits, misses, miss_rate, cnt) in enumerate(zip(hits_means, misses_means, miss_rates, counts)):
-                if totals[i] > 0 and cnt > 0 and misses > 0:
-                    miss_bar_center = hits + (misses / 2)
-                    ax.text(pos[i], miss_bar_center, f"{miss_rate:.1f}%",
-                            ha="center", va="center", fontsize=7,
-                            color="white", fontweight="bold",
-                            bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.6))
+            # Add miss percentage labels (rotated, above the total value label)
+            for i, (total, miss_rate, cnt) in enumerate(zip(totals, miss_rates, counts)):
+                if total > 0 and cnt > 0 and miss_rate > 0:
+                    top_of_whisker = total + totals_stds[i]
+                    total_label_y = top_of_whisker + label_offset
+                    miss_label_y = total_label_y + max_top * 0.05
+                    ax.text(pos[i], miss_label_y, f"miss {miss_rate:.1f}%",
+                            ha="center", va="bottom", fontsize=6.5, color="red", fontweight="bold",
+                            rotation=20)
+                    max_overall_height = max(max_overall_height, miss_label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
             "read": "Branch Prediction (Read Operation)",
@@ -792,9 +843,8 @@ class PerfGraphGenerator:
         ax.grid(True, alpha=0.3, axis="y", linestyle="--")
         ax.set_axisbelow(True)
 
-        if bars_plotted and all_max_values:
+        if bars_plotted:
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self._format_large_number(x)))
-            ax.set_ylim(0, max(all_max_values) * 1.1)
 
         plt.tight_layout()
         output_path = self.graph_dir / f"branch_prediction_{operation}.svg"
@@ -821,7 +871,8 @@ class PerfGraphGenerator:
         width = 0.8 / n_types
 
         bars_plotted = False
-        all_max_values = []
+        all_rel_errors = []
+        max_overall_height = 0.0
 
         # Store data for label addition
         all_comp_data = []
@@ -829,8 +880,8 @@ class PerfGraphGenerator:
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             hits_means = []
             misses_means = []
-            totals = []           # Total references (for all-cache) or misses (for L1/LLC)
-            totals_stds = []      # Standard deviation of totals
+            totals = []
+            totals_stds = []
             miss_rates = []
             counts = []
 
@@ -875,32 +926,36 @@ class PerfGraphGenerator:
                             rate_vals.append((total_misses / total_refs) * 100.0)
 
                 if cache_level in ["L1", "LLC"]:
-                    # For L1/LLC, we only have miss counts (bar = misses, total = misses)
-                    miss_mean, miss_std, cnt = self.calculate_stats(misses_vals)
-                    t_mean, _, _ = self.calculate_stats(total_vals)
+                    miss_mean, miss_std, miss_avg_rel, miss_max_rel, miss_cnt = self.calculate_stats(misses_vals)
+                    t_mean, t_std, t_avg_rel, t_max_rel, t_cnt = self.calculate_stats(total_vals)
                     hits_means.append(0.0)
                     misses_means.append(miss_mean)
                     totals.append(t_mean)
-                    totals_stds.append(miss_std if cnt > 1 else 0.0)
+                    totals_stds.append(miss_std)
                     miss_rates.append(0.0)
-                    counts.append(cnt)
-                    if t_mean > 0:
-                        all_max_values.append(t_mean + (miss_std if cnt > 1 else 0))
+                    counts.append(miss_cnt)
+                    all_rel_errors.append(miss_avg_rel)
+                    all_rel_errors.append(miss_max_rel)
+                    all_rel_errors.append(t_avg_rel)
+                    all_rel_errors.append(t_max_rel)
                 else:
-                    # For all-cache, bar = hits (bottom) and misses (top), total = references
-                    h_mean, h_std, cnt = self.calculate_stats(hits_vals)
-                    m_mean, m_std, _ = self.calculate_stats(misses_vals)
-                    t_mean, t_std, _ = self.calculate_stats(total_vals)
-                    r_mean, _, _ = self.calculate_stats(rate_vals)
+                    h_mean, h_std, h_avg_rel, h_max_rel, h_cnt = self.calculate_stats(hits_vals)
+                    m_mean, m_std, m_avg_rel, m_max_rel, m_cnt = self.calculate_stats(misses_vals)
+                    t_mean, t_std, t_avg_rel, t_max_rel, t_cnt = self.calculate_stats(total_vals)
+                    r_mean = mean(rate_vals) if rate_vals else 0.0
 
                     hits_means.append(h_mean)
                     misses_means.append(m_mean)
                     totals.append(t_mean)
-                    totals_stds.append(t_std if cnt > 1 else 0.0)
+                    totals_stds.append(t_std)
                     miss_rates.append(r_mean)
-                    counts.append(cnt)
-                    if t_mean > 0:
-                        all_max_values.append(t_mean + (t_std if cnt > 1 else 0))
+                    counts.append(t_cnt)
+                    all_rel_errors.append(h_avg_rel)
+                    all_rel_errors.append(h_max_rel)
+                    all_rel_errors.append(m_avg_rel)
+                    all_rel_errors.append(m_max_rel)
+                    all_rel_errors.append(t_avg_rel)
+                    all_rel_errors.append(t_max_rel)
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
@@ -920,10 +975,9 @@ class PerfGraphGenerator:
             if cache_level in ["L1", "LLC"]:
                 if any(m > 0 for m in misses_means):
                     bars_plotted = True
-                    # For L1/LLC, show misses bar with error bars on the bar itself
                     ax.bar(pos, misses_means, width, label=self.COMPRESSION_NAMES[comp_type],
                            color=self.COLORS[comp_type],
-                           yerr=[s if s > 0 and c > 1 else 0 for s, c in zip(totals_stds, counts)],
+                           yerr=[s if s > 0 else 0 for s in totals_stds],
                            capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
                            error_kw={'elinewidth': 1, 'capthick': 1})
             else:
@@ -944,7 +998,7 @@ class PerfGraphGenerator:
                             ax.errorbar(pos[i], total, yerr=total_std, fmt='none',
                                        ecolor='black', capsize=3, capthick=1, elinewidth=1)
 
-        max_top = max(all_max_values) if all_max_values else 1
+        max_top = max([t + s for t, s in zip(totals, totals_stds)]) if totals else 1
         label_offset = max_top * 0.02
 
         # Add labels using stored data
@@ -964,24 +1018,29 @@ class PerfGraphGenerator:
                     label_y = top_of_whisker + label_offset
                     ax.text(pos[i], label_y, self._format_large_number(total),
                             ha="center", va="bottom", fontsize=7)
+                    max_overall_height = max(max_overall_height, label_y)
 
-            # Add miss rate labels (only for cache_level="all")
+            # Add miss percentage labels (rotated, above the total value label) - only for cache_level="all"
             if cache_level not in ["L1", "LLC"]:
-                for i, (hits, misses, miss_rate, cnt) in enumerate(zip(hits_means, misses_means, miss_rates, counts)):
-                    if totals[i] > 0 and cnt > 0 and misses > 0:
-                        miss_bar_center = hits + (misses / 2)
-                        ax.text(pos[i], miss_bar_center, f"{miss_rate:.1f}%",
-                                ha="center", va="center", fontsize=7,
-                                color="white", fontweight="bold",
-                                bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.6))
+                for i, (total, miss_rate, cnt) in enumerate(zip(totals, miss_rates, counts)):
+                    if total > 0 and cnt > 0 and miss_rate > 0:
+                        top_of_whisker = total + totals_stds[i]
+                        total_label_y = top_of_whisker + label_offset
+                        miss_label_y = total_label_y + max_top * 0.05
+                        ax.text(pos[i], miss_label_y, f"miss {miss_rate:.1f}%",
+                                ha="center", va="bottom", fontsize=6.5, color="red", fontweight="bold",
+                                rotation=20)
+                        max_overall_height = max(max_overall_height, miss_label_y)
+
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         cache_names = {"L1": "L1 Data Cache", "LLC": "Last Level Cache", "all": "Cache"}
         ylabel = "Cache Misses" if cache_level in ["L1", "LLC"] else "Cache References"
 
         title_map = {
-            "read": f"{cache_names[cache_level]} Performance (Read)",
-            "write": f"{cache_names[cache_level]} Performance (Write)",
-            "overall": f"Overall {cache_names[cache_level]} Performance",
+            "read": f"{cache_names[cache_level]} Performance (Read Operation)",
+            "write": f"{cache_names[cache_level]} Performance (Write Operation)",
+            "overall": f"{cache_names[cache_level]} Performance (Overall)",
         }
 
         ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
@@ -1004,9 +1063,8 @@ class PerfGraphGenerator:
         ax.grid(True, alpha=0.3, axis="y", linestyle="--")
         ax.set_axisbelow(True)
 
-        if bars_plotted and all_max_values:
+        if bars_plotted:
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self._format_large_number(x)))
-            ax.set_ylim(0, max(all_max_values) * 1.1)
 
         plt.tight_layout()
         cache_suffix = {"L1": "l1", "LLC": "llc", "all": "all"}
