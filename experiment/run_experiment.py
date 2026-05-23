@@ -265,11 +265,15 @@ class LZ4Experiment:
         ]
 
         perf_cmd = [
-            "perf", "stat",
-            "-e", ",".join(events),
-            "-x", ",",  # CSV format
-            "-o", str(stat_file),
-            "--"
+            "perf",
+            "stat",
+            "-e",
+            ",".join(events),
+            "-x",
+            ",",  # CSV format
+            "-o",
+            str(stat_file),
+            "--",
         ] + cmd
 
         result = run(perf_cmd, capture_output=True, text=True)
@@ -298,7 +302,7 @@ class LZ4Experiment:
         cmd = [
             "dd",
             f"if={input_file}",
-            f"of={self.proxy_dev}",
+            f"of={self.bvec_dev}",
             f"bs={self.args.bs}",
             f"count={count}",
             "iflag=fullblock",
@@ -312,7 +316,7 @@ class LZ4Experiment:
         """Run dd read operation with optional perf stat."""
         cmd = [
             "dd",
-            f"if={self.proxy_dev}",
+            f"if={self.bvec_dev}",
             f"of={output_file}",
             f"bs={self.args.bs}",
             f"count={count}",
@@ -411,8 +415,10 @@ class LZ4Experiment:
             stats = LZ4Stats.from_sysfs()
 
             if stats.stats_r_reqs_total != stats.stats_w_reqs_total:
-                print(f"    WARNING: Read requests ({stats.stats_r_reqs_total}) != "
-                      f"Write requests ({stats.stats_w_reqs_total})")
+                print(
+                    f"    WARNING: Read requests ({stats.stats_r_reqs_total}) != "
+                    f"Write requests ({stats.stats_w_reqs_total})"
+                )
 
             self._save_intermediate_results(test_file, comp_type, run_num, stats)
             print("    Test completed successfully")
@@ -439,6 +445,7 @@ class LZ4Experiment:
 
         try:
             from generate_graphs import GraphGenerator
+
             generator = GraphGenerator(self.result_dir, self.graph_dir)
             generator.generate_all_graphs()
             print("\nGraphs generated successfully!")
@@ -446,6 +453,7 @@ class LZ4Experiment:
         except Exception as e:
             print(f"\nError generating graphs: {e}")
             from traceback import print_exc
+
             print_exc()
 
     def run_experiment(self) -> None:
@@ -498,7 +506,7 @@ class LZ4Experiment:
                 print(f"  Original size:  {file_size:,} bytes")
                 print(f"  Block size:     {self.bs_bytes:,} bytes")
                 print(f"  Block count:    {block_count}")
-                print(f"  I/O size:       {io_size:,} bytes ({io_size / (1024*1024):.2f} MB)")
+                print(f"  I/O size:       {io_size:,} bytes ({io_size / (1024 * 1024):.2f} MB)")
                 print(f"{'=' * 60}")
 
                 for comp_type in self.COMPRESSION_TYPES:
@@ -523,6 +531,7 @@ class LZ4Experiment:
             print(f"Experiment failed: {e}")
             print(f"{'!' * 60}")
             import traceback
+
             traceback.print_exc()
             experiment_success = False
 
