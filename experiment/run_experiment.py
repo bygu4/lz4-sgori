@@ -18,7 +18,7 @@
 
 """
 Experimental environment for comparing LZ4 compression variations in Linux kernel.
-Uses perf stat for accurate event counting (not sampling).
+Uses perf stat for accurate event counting with module filtering.
 """
 
 from argparse import ArgumentParser, Namespace
@@ -38,7 +38,6 @@ from typing import Any, Dict, List, Union
 class LZ4Stats:
     """Container for LZ4 I/O statistics."""
 
-    # Read statistics
     stats_r_reqs_total: int = 0
     stats_r_reqs_failed: int = 0
     stats_r_min_vec: int = 0
@@ -53,7 +52,6 @@ class LZ4Stats:
     stats_r_decomp_ns: int = 0
     stats_r_total_ns: int = 0
 
-    # Write statistics
     stats_w_reqs_total: int = 0
     stats_w_reqs_failed: int = 0
     stats_w_min_vec: int = 0
@@ -70,7 +68,6 @@ class LZ4Stats:
 
     @classmethod
     def from_sysfs(cls, base_path: Path = Path("/sys/module/lz4e_bdev/parameters")) -> "LZ4Stats":
-        """Read statistics from sysfs."""
         stats = cls()
         for field in cls.__dataclass_fields__:
             param_path = base_path / field
@@ -84,15 +81,15 @@ class LZ4Stats:
         return stats
 
     def to_dict(self) -> Dict:
-        """Convert to dictionary."""
         return asdict(self)
 
 
 class LZ4Experiment:
-    """Main experiment class for LZ4 compression testing."""
-
     COMPRESSION_TYPES = ["cont", "vect", "strm", "extd"]
     IGNORE_FILES = [".gitkeep"]
+
+    # Default modules to filter
+    DEFAULT_MODULES = ["lz4_compress", "lz4e_compress"]
 
     def __init__(self, args: Namespace) -> None:
         self.args = args
@@ -101,26 +98,30 @@ class LZ4Experiment:
         self.under_dev = args.under_dev
         self.tmp_dir = Path("./experiment/tmp")
 
-        # Create result and graph directories
         self.result_dir = Path(args.result)
         self.graph_dir = Path(args.graph)
         self.result_dir.mkdir(parents=True, exist_ok=True)
         self.graph_dir.mkdir(parents=True, exist_ok=True)
 
-        # Setup dataset
         self.dataset_dir = Path(args.dataset)
         if not self.dataset_dir.exists():
             raise FileNotFoundError(f"Dataset directory not found: {self.dataset_dir}")
 
-        # Setup perf directory if specified
         self.perf_dir = None
         if args.perf_dir:
             self.perf_dir = Path(args.perf_dir)
             self.perf_dir.mkdir(parents=True, exist_ok=True)
             print(f"Perf statistics will be saved to: {self.perf_dir}")
 
+        # Parse modules to filter (use defaults if not specified)
+        if args.filter_modules:
+            self.filter_modules = [m.strip() for m in args.filter_modules.split(",")]
+        else:
+            self.filter_modules = self.DEFAULT_MODULES.copy()
+
+        print(f"Filtering modules: {', '.join(self.filter_modules)}")
+
     def _parse_bs(self, bs_str: str) -> int:
-        """Parse block size from IEC format to bytes."""
         try:
             result = run(
                 ["numfmt", "--from=iec", bs_str],
@@ -136,7 +137,6 @@ class LZ4Experiment:
             return int(bs_str)
 
     def _setup_under_device(self) -> Union[Any, str]:
-        """Setup underlying device if not provided."""
         if not self.under_dev or self.under_dev == "None":
             dev_size_kb = self.args.dev_size
             print(f"Creating RAM device of size {dev_size_kb} KB...")
@@ -149,19 +149,16 @@ class LZ4Experiment:
         return self.under_dev
 
     def _load_modules(self) -> None:
-        """Load required kernel modules."""
         print("Loading lz4e_bdev module...")
         run(["make", "reinsert"], cwd=".", check=True)
         sleep(0.1)
 
     def _unload_modules(self) -> None:
-        """Unload kernel modules."""
         print("Unloading modules...")
         run(["make", "remove"], cwd=".", check=True)
         sleep(0.1)
 
     def _create_proxy_device(self, under_dev: str) -> None:
-        """Create proxy device over underlying device."""
         print(f"Creating proxy device over {under_dev}...")
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/mapper")
         with open(sysfs_param, "w") as f:
@@ -172,7 +169,6 @@ class LZ4Experiment:
             raise RuntimeError(f"Proxy device {self.proxy_dev} not created")
 
     def _remove_proxy_device(self) -> None:
-        """Remove proxy device."""
         print("Removing proxy device...")
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/unmapper")
         with open(sysfs_param, "w") as f:
@@ -180,32 +176,27 @@ class LZ4Experiment:
         sleep(0.1)
 
     def _set_compression_type(self, comp_type: str) -> None:
-        """Set compression type."""
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/comp_type")
         with open(sysfs_param, "w") as f:
             f.write(comp_type)
         sleep(0.1)
 
     def _set_acceleration(self, accel: int) -> None:
-        """Set acceleration factor."""
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/acceleration")
         with open(sysfs_param, "w") as f:
             f.write(str(accel))
         sleep(0.1)
 
     def _reset_stats(self) -> None:
-        """Reset I/O statistics."""
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/stats_reset")
         with open(sysfs_param, "w") as f:
             f.write("1")
         sleep(0.1)
 
     def _get_count(self, file_size: int) -> int:
-        """Calculate count parameter for dd (number of blocks)."""
         return (file_size + self.bs_bytes - 1) // self.bs_bytes
 
     def _run_dd_write(self, input_file: Path, count: int) -> bool:
-        """Run dd write operation without perf."""
         cmd = [
             "dd",
             f"if={input_file}",
@@ -221,7 +212,6 @@ class LZ4Experiment:
         return result.returncode == 0
 
     def _run_dd_read(self, output_file: Path, count: int) -> bool:
-        """Run dd read operation without perf."""
         cmd = [
             "dd",
             f"if={self.proxy_dev}",
@@ -235,7 +225,7 @@ class LZ4Experiment:
         return result.returncode == 0
 
     def _run_perf_stat(self, cmd: List[str], stat_file: Path) -> bool:
-        """Run perf stat for accurate event counting."""
+        """Run perf stat with module filtering."""
         events = [
             "cycles",
             "instructions",
@@ -247,38 +237,33 @@ class LZ4Experiment:
             "LLC-load-misses",
             "page-faults",
         ]
-        
-        perf_cmd = [
-            "perf", "stat",
-            "-e", ",".join(events),
-            "-x", ",",  # CSV format
-            "-o", str(stat_file),
-            "--"
-        ] + cmd
-        
+
+        perf_cmd = ["perf", "stat", "-e", ",".join(events), "-x", ",", "-o", str(stat_file)]
+
+        # Add module filtering (always enabled with default modules)
+        for module in self.filter_modules:
+            perf_cmd.extend(["--module", module])
+
+        perf_cmd.append("--")
+        perf_cmd.extend(cmd)
+
         result = run(perf_cmd, capture_output=True, text=True)
-        
+
         if result.returncode != 0:
-            print(f"      Warning: perf stat failed with return code {result.returncode}")
-            if result.stderr:
-                print(f"      stderr: {result.stderr[:200]}")
+            print(f"      Warning: perf stat failed: {result.stderr[:200]}")
             return False
-        
+
         return True
 
     def _run_with_perf(self, operation_name: str, cmd: List[str], perf_subdir: Path) -> bool:
-        """Run a command with perf stat if perf_dir is enabled."""
         if not self.perf_dir:
-            # No perf profiling, just run the command directly
             result = run(cmd, capture_output=True)
             return result.returncode == 0
 
-        # Run with perf stat
         stat_file = perf_subdir / f"{operation_name}_stats.csv"
         return self._run_perf_stat(cmd, stat_file)
 
     def _run_dd_write_with_perf(self, input_file: Path, count: int, perf_subdir: Path) -> bool:
-        """Run dd write operation with optional perf stat."""
         cmd = [
             "dd",
             f"if={input_file}",
@@ -293,7 +278,6 @@ class LZ4Experiment:
         return self._run_with_perf("write", cmd, perf_subdir)
 
     def _run_dd_read_with_perf(self, output_file: Path, count: int, perf_subdir: Path) -> bool:
-        """Run dd read operation with optional perf stat."""
         cmd = [
             "dd",
             f"if={self.proxy_dev}",
@@ -306,12 +290,10 @@ class LZ4Experiment:
         return self._run_with_perf("read", cmd, perf_subdir)
 
     def _verify_integrity(self, original: Path, test: Path, size: int) -> bool:
-        """Verify integrity by comparing first N bytes."""
         with open(original, "rb") as f1, open(test, "rb") as f2:
             return f1.read(size) == f2.read(size)
 
     def _get_test_files(self) -> List[Path]:
-        """Recursively find all test files in dataset directory."""
         test_files = []
         for root, _, files in walk(self.dataset_dir):
             for file in files:
@@ -322,7 +304,6 @@ class LZ4Experiment:
     def _save_intermediate_results(
         self, test_file: Path, comp_type: str, run_num: int, stats: LZ4Stats
     ) -> None:
-        """Save intermediate results to JSON file."""
         comp_dir = self.result_dir / comp_type
         comp_dir.mkdir(exist_ok=True)
 
@@ -350,12 +331,10 @@ class LZ4Experiment:
         print(f"  Saved intermediate results to {result_file}")
 
     def _cleanup_tmp_dir(self) -> None:
-        """Remove temporary directory and all its contents."""
         if self.tmp_dir.exists():
             rmtree(self.tmp_dir, ignore_errors=True)
 
     def run_single_test(self, test_file: Path, comp_type: str, run_num: int) -> None:
-        """Run a single test for a specific file and compression type."""
         file_size = test_file.stat().st_size
         count = self._get_count(file_size)
 
@@ -395,8 +374,10 @@ class LZ4Experiment:
             stats = LZ4Stats.from_sysfs()
 
             if stats.stats_r_reqs_total != stats.stats_w_reqs_total:
-                print(f"    WARNING: Read requests ({stats.stats_r_reqs_total}) != "
-                      f"Write requests ({stats.stats_w_reqs_total})")
+                print(
+                    f"    WARNING: Read requests ({stats.stats_r_reqs_total}) != "
+                    f"Write requests ({stats.stats_w_reqs_total})"
+                )
 
             self._save_intermediate_results(test_file, comp_type, run_num, stats)
             print("    Test completed successfully")
@@ -416,13 +397,13 @@ class LZ4Experiment:
             self._reset_stats()
 
     def _generate_graphs(self) -> None:
-        """Generate graphs using imported GraphGenerator."""
         print("\n" + "=" * 60)
         print("Generating performance graphs...")
         print("=" * 60)
 
         try:
             from generate_graphs import GraphGenerator
+
             generator = GraphGenerator(self.result_dir, self.graph_dir)
             generator.generate_all_graphs()
             print("\nGraphs generated successfully!")
@@ -430,10 +411,10 @@ class LZ4Experiment:
         except Exception as e:
             print(f"\nError generating graphs: {e}")
             from traceback import print_exc
+
             print_exc()
 
     def run_experiment(self) -> None:
-        """Run the complete experiment."""
         experiment_success = False
 
         try:
@@ -468,6 +449,7 @@ class LZ4Experiment:
             if self.perf_dir:
                 print(f"Perf directory:       {self.perf_dir}")
                 print("Perf method:          perf stat (100% accurate, CSV output)")
+                print(f"Module filters:       {', '.join(self.filter_modules)}")
             else:
                 print("Perf profiling:       Disabled")
             print("=" * 80)
@@ -482,7 +464,7 @@ class LZ4Experiment:
                 print(f"  Original size:  {file_size:,} bytes")
                 print(f"  Block size:     {self.bs_bytes:,} bytes")
                 print(f"  Block count:    {block_count}")
-                print(f"  I/O size:       {io_size:,} bytes ({io_size / (1024*1024):.2f} MB)")
+                print(f"  I/O size:       {io_size:,} bytes ({io_size / (1024 * 1024):.2f} MB)")
                 print(f"{'=' * 60}")
 
                 for comp_type in self.COMPRESSION_TYPES:
@@ -507,6 +489,7 @@ class LZ4Experiment:
             print(f"Experiment failed: {e}")
             print(f"{'!' * 60}")
             import traceback
+
             traceback.print_exc()
             experiment_success = False
 
@@ -543,26 +526,23 @@ def main() -> None:
         "--dataset", default="./experiment/dataset", help="Path to dataset directory"
     )
     parser.add_argument(
-        "--result",
-        default="./experiment/result",
-        help="Path to intermediate results directory",
+        "--result", default="./experiment/result", help="Path to intermediate results directory"
     )
     parser.add_argument("--graph", default="./experiment/graph", help="Path to graph directory")
     parser.add_argument(
         "--under-dev", default="None", help="Underlying device (or None for RAM device)"
     )
     parser.add_argument(
-        "--dev-size",
-        default=1024 * 1024,
-        type=int,
-        help="Device size in KB (for RAM device)",
+        "--dev-size", default=1024 * 1024, type=int, help="Device size in KB (for RAM device)"
     )
     parser.add_argument("--runs", default=5, type=int, help="Number of test runs")
     parser.add_argument("--acceleration", default=1, type=int, help="LZ4 acceleration factor")
     parser.add_argument("--no-graph", action="store_true", help="Skip graph generation")
+    parser.add_argument("--perf-dir", help="Directory to save perf stat CSV files")
     parser.add_argument(
-        "--perf-dir",
-        help="Directory to save perf stat CSV files",
+        "--filter-modules",
+        default=None,
+        help="Comma-separated list of kernel module names to filter (default: lz4_compress,lz4e_compress)",
     )
 
     args = parser.parse_args()
