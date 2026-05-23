@@ -32,8 +32,6 @@ from tempfile import NamedTemporaryFile
 from time import sleep
 from typing import Any, Dict, List, Union
 
-from generate_graphs import GraphGenerator
-
 
 @dataclass
 class LZ4Stats:
@@ -149,20 +147,20 @@ class LZ4Experiment:
                 check=True,
             )
             self.under_dev = "/dev/ram0"
-            sleep(0.001)
+            sleep(0.1)
         return self.under_dev
 
     def _load_modules(self) -> None:
         """Load required kernel modules."""
         print("Loading lz4e_bdev module...")
         run(["make", "reinsert"], cwd=".", check=True)
-        sleep(0.001)
+        sleep(0.1)
 
     def _unload_modules(self) -> None:
         """Unload kernel modules."""
         print("Unloading modules...")
         run(["make", "remove"], cwd=".", check=True)
-        sleep(0.001)
+        sleep(0.1)
 
     def _create_proxy_device(self, under_dev: str) -> None:
         """Create proxy device over underlying device."""
@@ -170,7 +168,7 @@ class LZ4Experiment:
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/mapper")
         with open(sysfs_param, "w") as f:
             f.write(under_dev)
-        sleep(0.001)
+        sleep(0.1)
 
         if not self.proxy_dev.exists():
             raise RuntimeError(f"Proxy device {self.proxy_dev} not created")
@@ -197,32 +195,32 @@ class LZ4Experiment:
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/unmapper")
         with open(sysfs_param, "w") as f:
             f.write("lz4e0")
-        sleep(0.001)
+        sleep(0.1)
 
     def _set_compression_type(self, comp_type: str) -> None:
         """Set compression type."""
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/comp_type")
         with open(sysfs_param, "w") as f:
             f.write(comp_type)
-        sleep(0.001)
+        sleep(0.1)
 
     def _set_acceleration(self, accel: int) -> None:
         """Set acceleration factor."""
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/acceleration")
         with open(sysfs_param, "w") as f:
             f.write(str(accel))
-        sleep(0.001)
+        sleep(0.1)
 
     def _reset_stats(self) -> None:
         """Reset I/O statistics."""
         sysfs_param = Path("/sys/module/lz4e_bdev/parameters/stats_reset")
         with open(sysfs_param, "w") as f:
             f.write("1")
-        sleep(0.001)
+        sleep(0.1)
 
     def _get_count(self, file_size: int) -> int:
-        """Calculate count parameter for dd."""
-        return file_size // self.bs_bytes
+        """Calculate count parameter for dd (number of blocks)."""
+        return (file_size + self.bs_bytes - 1) // self.bs_bytes
 
     def _run_dd_write(self, input_file: Path, count: int) -> bool:
         """Run dd write operation."""
@@ -276,7 +274,8 @@ class LZ4Experiment:
             ",".join(perf_events),
             "-a",
             "-F",
-            "99",
+            "10000",  # Higher sampling frequency for better accuracy
+            "-g",  # Enable call graph
             "--",
         ]
         perf_cmd.extend(cmd)
@@ -361,6 +360,7 @@ class LZ4Experiment:
             "compression_type": comp_type,
             "run_number": run_num,
             "block_size": self.args.bs,
+            "block_size_bytes": self.bs_bytes,
             "acceleration": self.args.acceleration,
             "statistics": stats.to_dict(),
         }
@@ -423,11 +423,19 @@ class LZ4Experiment:
                 raise RuntimeError(f"DD read failed for {test_file}")
 
             # Verify integrity
-            if not self._verify_integrity(test_file, tmp_output, count * self.bs_bytes):
+            if not self._verify_integrity(test_file, tmp_output, file_size):
                 raise RuntimeError(f"Integrity check failed for {test_file}")
 
             # Collect statistics
             stats = LZ4Stats.from_sysfs()
+
+            # Validate request counts
+            if stats.stats_r_reqs_total != stats.stats_w_reqs_total:
+                print(
+                    f"    WARNING: Read requests ({stats.stats_r_reqs_total}) != "
+                    f"Write requests ({stats.stats_w_reqs_total})"
+                )
+                print(f"    Expected both to be {count}")
 
             # Save intermediate results
             self._save_intermediate_results(test_file, comp_type, run_num, stats)
@@ -457,6 +465,9 @@ class LZ4Experiment:
         print("=" * 60)
 
         try:
+            # Import here to avoid circular dependency
+            from generate_graphs import GraphGenerator
+
             # Create graph generator instance
             generator = GraphGenerator(self.result_dir, self.graph_dir)
 
@@ -490,12 +501,17 @@ class LZ4Experiment:
             total_files = len(test_files)
             total_runs = total_files * len(self.COMPRESSION_TYPES) * self.args.runs
 
+            # Calculate total data size
+            total_data_bytes = sum(f.stat().st_size for f in test_files)
+            total_data_mb = total_data_bytes / (1024 * 1024)
+
             # Print experiment information
             print("\n" + "=" * 80)
             print("LZ4 COMPRESSION EXPERIMENT")
             print("=" * 80)
             print(f"Dataset directory:    {self.dataset_dir}")
             print(f"Test files found:     {total_files}")
+            print(f"Total data size:      {total_data_mb:.2f} MB ({total_data_bytes:,} bytes)")
             print(f"Compression types:    {', '.join(self.COMPRESSION_TYPES)}")
             print(f"Runs per type:        {self.args.runs}")
             print(f"Total operations:     {total_runs}")
@@ -507,6 +523,7 @@ class LZ4Experiment:
             print(f"Graph directory:      {self.graph_dir}")
             if self.perf_dir:
                 print(f"Perf directory:       {self.perf_dir}")
+                print("Perf sampling:        1000 Hz (high accuracy)")
             else:
                 print("Perf profiling:       Disabled")
             print("=" * 80)
@@ -517,9 +534,9 @@ class LZ4Experiment:
                 try:
                     with open("/proc/kallsyms") as src, open(kallsyms_file, "w") as dst:
                         dst.write(src.read())
-                    print(f"      Saved kallsyms to: {kallsyms_file}")
+                    print(f"\nSaved kallsyms to: {kallsyms_file}")
                 except Exception as e:
-                    print(f"      Warning: Could not save kallsyms: {e}")
+                    print(f"Warning: Could not save kallsyms: {e}")
 
             # Run experiments
             for test_idx, test_file in enumerate(test_files, 1):
@@ -530,6 +547,7 @@ class LZ4Experiment:
                 print(f"\n{'=' * 60}")
                 print(f"Test file {test_idx}/{total_files}: {test_file.name}")
                 print(f"  Original size:  {file_size:,} bytes")
+                print(f"  Block size:     {self.bs_bytes:,} bytes")
                 print(f"  Block count:    {block_count}")
                 print(f"  I/O size:       {io_size:,} bytes ({io_size / (1024 * 1024):.2f} MB)")
                 print(f"{'=' * 60}")
@@ -583,6 +601,7 @@ class LZ4Experiment:
 
             # Always cleanup temporary directory on exit
             self._cleanup_tmp_dir()
+            print("Temporary directory cleaned up")
 
         if not experiment_success:
             exit(1)
@@ -614,7 +633,7 @@ def main() -> None:
     parser.add_argument("--no-graph", action="store_true", help="Skip graph generation")
     parser.add_argument(
         "--perf-dir",
-        help="Directory to save perf profiling data)",
+        help="Directory to save perf profiling data",
     )
 
     args = parser.parse_args()
