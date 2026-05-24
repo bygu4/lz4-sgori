@@ -378,6 +378,7 @@ class LZ4Experiment:
         """Run a single test for a specific file and compression type."""
         file_size = test_file.stat().st_size
         count = self._get_count(file_size)
+        io_size = count * self.bs_bytes
 
         perf_subdir = None
         if self.perf_dir:
@@ -409,7 +410,7 @@ class LZ4Experiment:
             ):
                 raise RuntimeError(f"DD read failed for {test_file}")
 
-            if not self._verify_integrity(test_file, tmp_output, file_size):
+            if not self._verify_integrity(test_file, tmp_output, io_size):
                 raise RuntimeError(f"Integrity check failed for {test_file}")
 
             stats = LZ4Stats.from_sysfs()
