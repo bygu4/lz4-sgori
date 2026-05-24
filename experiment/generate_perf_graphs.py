@@ -76,11 +76,7 @@ class PerfStats:
     @property
     def cache_miss_rate(self) -> float:
         """Cache miss rate as percentage."""
-        return (
-            (self.cache_misses / self.cache_references) * 100.0
-            if self.cache_references > 0
-            else 0.0
-        )
+        return (self.cache_misses / self.cache_references) * 100.0 if self.cache_references > 0 else 0.0
 
 
 class PerfGraphGenerator:
@@ -92,7 +88,6 @@ class PerfGraphGenerator:
         "extd": "Extended",
     }
 
-    # Blue, Yellow, Green, Red
     COLORS = {"cont": "#1f77b4", "vect": "#ff7f0e", "strm": "#2ca02c", "extd": "#d62728"}
 
     def __init__(self, result_dir: Path, perf_dir: Path, graph_dir: Path):
@@ -100,13 +95,13 @@ class PerfGraphGenerator:
         self.perf_dir = Path(perf_dir)
         self.graph_dir = Path(graph_dir)
         self.graph_dir.mkdir(parents=True, exist_ok=True)
-
+        
         # Create subdirectories for absolute and relative graphs
         self.abs_graph_dir = self.graph_dir / "absolute"
         self.rel_graph_dir = self.graph_dir / "relative"
         self.abs_graph_dir.mkdir(parents=True, exist_ok=True)
         self.rel_graph_dir.mkdir(parents=True, exist_ok=True)
-
+        
         self._perf_cache: Dict[str, PerfStats] = {}
         self._results: Dict[str, Dict[str, List[Tuple[PerfStats, PerfStats]]]] = {}
 
@@ -126,42 +121,40 @@ class PerfGraphGenerator:
                     line = line.strip()
                     if not line:
                         continue
-                    if "<not supported>" in line:
+                    if '<not supported>' in line:
                         continue
-                    line = line.lstrip("~ ")
-                    parts = line.split(",")
+                    line = line.lstrip('~ ')
+                    parts = line.split(',')
 
                     if len(parts) >= 3:
                         try:
                             value = float(parts[0])
                             event = parts[2].strip()
 
-                            if event == "cycles":
+                            if event == 'cycles':
                                 stats.cycles = value
-                            elif event == "instructions":
+                            elif event == 'instructions':
                                 stats.instructions = value
-                            elif event == "branches":
+                            elif event == 'branches':
                                 stats.branches = value
-                            elif event == "branch-misses":
+                            elif event == 'branch-misses':
                                 stats.branch_misses = value
-                            elif event == "cache-references":
+                            elif event == 'cache-references':
                                 stats.cache_references = value
-                            elif event == "cache-misses":
+                            elif event == 'cache-misses':
                                 stats.cache_misses = value
-                            elif event == "L1-dcache-load-misses":
+                            elif event == 'L1-dcache-load-misses':
                                 stats.l1_dcache_load_misses = value
-                            elif event == "LLC-load-misses":
+                            elif event == 'LLC-load-misses':
                                 stats.llc_load_misses = value
-                            elif event == "page-faults":
+                            elif event == 'page-faults':
                                 stats.page_faults = value
                         except (ValueError, IndexError):
                             continue
 
             if stats.cycles > 0 or stats.instructions > 0 or stats.branches > 0:
                 self._perf_cache[cache_key] = stats
-                print(
-                    f"        Loaded: cycles={stats.cycles:,.0f}, instructions={stats.instructions:,.0f}, branches={stats.branches:,.0f}"
-                )
+                print(f"        Loaded: cycles={stats.cycles:,.0f}, instructions={stats.instructions:,.0f}, branches={stats.branches:,.0f}")
                 return stats
 
         except Exception as e:
@@ -197,18 +190,10 @@ class PerfGraphGenerator:
                         self._results[test_file_name] = {ct: [] for ct in self.COMPRESSION_TYPES}
 
                     read_csv = (
-                        self.perf_dir
-                        / comp_type
-                        / test_file_name
-                        / f"run{run_num}"
-                        / "read_stats.csv"
+                        self.perf_dir / comp_type / test_file_name / f"run{run_num}" / "read_stats.csv"
                     )
                     write_csv = (
-                        self.perf_dir
-                        / comp_type
-                        / test_file_name
-                        / f"run{run_num}"
-                        / "write_stats.csv"
+                        self.perf_dir / comp_type / test_file_name / f"run{run_num}" / "write_stats.csv"
                     )
 
                     read_stats = self._parse_perf_stat_csv(read_csv)
@@ -267,6 +252,14 @@ class PerfGraphGenerator:
 
         return mean_val, std_val, avg_rel_error, max_rel_error, n
 
+    def _add_hint_to_plot(self, ax: plt.Axes, higher_is_better: bool) -> None:
+        """Add a hint text indicating whether higher or lower values are better."""
+        hint_text = "Higher is better" if higher_is_better else "Lower is better"
+        bbox_color = "lightgreen" if higher_is_better else "lightcoral"
+        ax.text(0.02, 0.98, hint_text, transform=ax.transAxes,
+                fontsize=9, verticalalignment="top",
+                bbox=dict(boxstyle="round", facecolor=bbox_color, alpha=0.7))
+
     def _add_error_stats_to_plot(
         self, ax: plt.Axes, all_relative_errors: List[float], max_bar_height: float
     ) -> None:
@@ -303,11 +296,11 @@ class PerfGraphGenerator:
 
     def _format_large_number(self, num: float) -> str:
         if num >= 1e9:
-            return f"{num / 1e9:.2f}B"
+            return f"{num/1e9:.2f}B"
         elif num >= 1e6:
-            return f"{num / 1e6:.2f}M"
+            return f"{num/1e6:.2f}M"
         elif num >= 1e3:
-            return f"{num / 1e3:.2f}K"
+            return f"{num/1e3:.2f}K"
         else:
             return f"{num:.0f}"
 
@@ -316,7 +309,7 @@ class PerfGraphGenerator:
         cont_metrics = self._results[test_file].get("cont", [])
         if not cont_metrics:
             return 0.0
-
+        
         cont_values = []
         for read_perf, write_perf in cont_metrics:
             if operation == "read":
@@ -325,7 +318,7 @@ class PerfGraphGenerator:
                 perfs = [write_perf]
             else:
                 perfs = [read_perf, write_perf]
-
+            
             if metric == "cycles":
                 val = sum(p.cycles for p in perfs)
             elif metric == "instructions":
@@ -336,17 +329,13 @@ class PerfGraphGenerator:
                 val = sum(p.cache_references for p in perfs)
             else:
                 val = 0.0
-
+            
             if val > 0:
                 cont_values.append(val)
-
+        
         return mean(cont_values) if cont_values else 0.0
 
-    # ===== RELATIVE GRAPHS =====
-
-    def plot_relative_metric(
-        self, operation: str, metric: str, metric_name: str, higher_is_better: bool = True
-    ) -> None:
+    def plot_relative_metric(self, operation: str, metric: str, metric_name: str, higher_is_better: bool = True) -> None:
         """Generate relative performance graph for a specific metric."""
         test_files = sorted(self._results.keys())
         if not test_files:
@@ -371,10 +360,7 @@ class PerfGraphGenerator:
                     # Contiguous is always 1.0
                     metrics_list = self._results[test_file].get("cont", [])
                     n_runs = len(metrics_list)
-                    if (
-                        n_runs > 0
-                        and self._get_contiguous_baseline(test_file, operation, metric) > 0
-                    ):
+                    if n_runs > 0 and self._get_contiguous_baseline(test_file, operation, metric) > 0:
                         means.append(1.0)
                         stds.append(0.0)
                     else:
@@ -387,7 +373,7 @@ class PerfGraphGenerator:
                         means.append(0.0)
                         stds.append(0.0)
                         continue
-
+                    
                     metrics_list = self._results[test_file].get(comp_type, [])
                     if not metrics_list:
                         means.append(0.0)
@@ -402,7 +388,7 @@ class PerfGraphGenerator:
                             perfs = [write_perf]
                         else:
                             perfs = [read_perf, write_perf]
-
+                        
                         if metric == "cycles":
                             val = sum(p.cycles for p in perfs)
                         elif metric == "instructions":
@@ -413,13 +399,11 @@ class PerfGraphGenerator:
                             val = total_inst / total_cycles if total_cycles > 0 else 0.0
                         else:
                             val = 0.0
-
+                        
                         if val > 0:
                             rel_values.append(val / cont_baseline)
 
-                    mean_val, std_val, avg_rel_err, max_rel_err, n = self.calculate_stats(
-                        rel_values
-                    )
+                    mean_val, std_val, avg_rel_err, max_rel_err, n = self.calculate_stats(rel_values)
                     means.append(mean_val)
                     stds.append(std_val)
                     if n > 1:
@@ -430,19 +414,11 @@ class PerfGraphGenerator:
 
             if any(m > 0 for m in means):
                 bars_plotted = True
-                ax.bar(
-                    pos,
-                    means,
-                    width,
-                    label=self.COMPRESSION_NAMES[comp_type],
-                    color=self.COLORS[comp_type],
-                    yerr=[s if s > 0 else 0 for s in stds],
-                    capsize=3,
-                    alpha=0.8,
-                    edgecolor="black",
-                    linewidth=0.8,
-                    error_kw={"elinewidth": 1, "capthick": 1},
-                )
+                ax.bar(pos, means, width, label=self.COMPRESSION_NAMES[comp_type],
+                       color=self.COLORS[comp_type],
+                       yerr=[s if s > 0 else 0 for s in stds],
+                       capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
+                       error_kw={'elinewidth': 1, 'capthick': 1})
 
         # Add value labels above error bars
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
@@ -451,10 +427,7 @@ class PerfGraphGenerator:
                 if comp_type == "cont":
                     metrics_list = self._results[test_file].get("cont", [])
                     n_runs = len(metrics_list)
-                    if (
-                        n_runs > 0
-                        and self._get_contiguous_baseline(test_file, operation, metric) > 0
-                    ):
+                    if n_runs > 0 and self._get_contiguous_baseline(test_file, operation, metric) > 0:
                         means.append(1.0)
                         stds.append(0.0)
                     else:
@@ -466,7 +439,7 @@ class PerfGraphGenerator:
                         means.append(0.0)
                         stds.append(0.0)
                         continue
-
+                    
                     metrics_list = self._results[test_file].get(comp_type, [])
                     if not metrics_list:
                         means.append(0.0)
@@ -481,7 +454,7 @@ class PerfGraphGenerator:
                             perfs = [write_perf]
                         else:
                             perfs = [read_perf, write_perf]
-
+                        
                         if metric == "cycles":
                             val = sum(p.cycles for p in perfs)
                         elif metric == "instructions":
@@ -492,7 +465,7 @@ class PerfGraphGenerator:
                             val = total_inst / total_cycles if total_cycles > 0 else 0.0
                         else:
                             val = 0.0
-
+                        
                         if val > 0:
                             rel_values.append(val / cont_baseline)
 
@@ -504,9 +477,11 @@ class PerfGraphGenerator:
             for i, (m, s) in enumerate(zip(means, stds)):
                 if m > 0:
                     label_y = m + s + (m * 0.01)
-                    ax.text(pos[i], label_y, f"{m:.3f}", ha="center", va="bottom", fontsize=7)
+                    ax.text(pos[i], label_y, f"{m:.3f}",
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better)
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -538,7 +513,7 @@ class PerfGraphGenerator:
             print(f"  Skipped: relative_{metric}_{operation}.svg (no data)")
 
     def plot_relative_branch_prediction(self, operation: str) -> None:
-        """Plot relative branch prediction with misses stacked on hits, normalized to Contiguous total branches."""
+        """Plot relative branch prediction with misses stacked on hits."""
         test_files = sorted(self._results.keys())
         if not test_files:
             print("    No data to plot for relative branch prediction")
@@ -564,9 +539,8 @@ class PerfGraphGenerator:
             counts = []
 
             for test_file in test_files:
-                # Get Contiguous baseline total branches
                 cont_baseline = self._get_contiguous_baseline(test_file, operation, "branches")
-
+                
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list or cont_baseline == 0:
                     hits_means.append(0.0)
@@ -591,11 +565,10 @@ class PerfGraphGenerator:
                         misses = read_perf.branch_misses + write_perf.branch_misses
 
                     if branches > 0 and misses <= branches:
-                        # Normalize to Contiguous total
                         rel_total = branches / cont_baseline
                         rel_misses = misses / cont_baseline
                         rel_hits = (branches - misses) / cont_baseline
-
+                        
                         hits_vals.append(rel_hits)
                         misses_vals.append(rel_misses)
                         total_rel_vals.append(rel_total)
@@ -627,49 +600,21 @@ class PerfGraphGenerator:
 
             if any(h > 0 for h in hits_means) or any(m > 0 for m in misses_means):
                 bars_plotted = True
-                # Plot hits (bottom bar)
-                ax.bar(
-                    pos,
-                    hits_means,
-                    width,
-                    label=f"{self.COMPRESSION_NAMES[comp_type]} (hits)",
-                    color=self.COLORS[comp_type],
-                    alpha=0.75,
-                    edgecolor="black",
-                    linewidth=0.8,
-                )
-                # Plot misses (stacked on top)
-                ax.bar(
-                    pos,
-                    misses_means,
-                    width,
-                    bottom=hits_means,
-                    label=f"{self.COMPRESSION_NAMES[comp_type]} (misses)",
-                    color=self.COLORS[comp_type],
-                    alpha=0.3,
-                    edgecolor="black",
-                    linewidth=0.8,
-                    hatch="//",
-                )
+                ax.bar(pos, hits_means, width, label=f"{self.COMPRESSION_NAMES[comp_type]} (hits)",
+                       color=self.COLORS[comp_type],
+                       alpha=0.75, edgecolor="black", linewidth=0.8)
+                ax.bar(pos, misses_means, width, bottom=hits_means,
+                       label=f"{self.COMPRESSION_NAMES[comp_type]} (misses)",
+                       color=self.COLORS[comp_type], alpha=0.3, edgecolor="black", linewidth=0.8, hatch="//")
 
-                # Add error bars on the TOTAL (at the top of the stacked bar)
                 for i, (total, total_std, cnt) in enumerate(zip(totals, totals_stds, counts)):
                     if total > 0 and cnt > 0 and total_std > 0:
-                        ax.errorbar(
-                            pos[i],
-                            total,
-                            yerr=total_std,
-                            fmt="none",
-                            ecolor="black",
-                            capsize=3,
-                            capthick=1,
-                            elinewidth=1,
-                        )
+                        ax.errorbar(pos[i], total, yerr=total_std, fmt='none',
+                                   ecolor='black', capsize=3, capthick=1, elinewidth=1)
 
         max_top = max([t + s for t, s in zip(totals, totals_stds)]) if totals else 1
         label_offset = max_top * 0.02
 
-        # Add labels - re-compute to avoid scope issues
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             hits_means = []
             misses_means = []
@@ -680,7 +625,7 @@ class PerfGraphGenerator:
 
             for test_file in test_files:
                 cont_baseline = self._get_contiguous_baseline(test_file, operation, "branches")
-
+                
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list or cont_baseline == 0:
                     hits_means.append(0.0)
@@ -707,7 +652,7 @@ class PerfGraphGenerator:
                         rel_total = branches / cont_baseline
                         rel_misses = misses / cont_baseline
                         rel_hits = (branches - misses) / cont_baseline
-
+                        
                         hits_vals.append(rel_hits)
                         misses_vals.append(rel_misses)
                         total_rel_vals.append(rel_total)
@@ -727,33 +672,25 @@ class PerfGraphGenerator:
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
-            # Add total value labels above the error bar whiskers
             for i, (total, std, cnt) in enumerate(zip(totals, totals_stds, counts)):
                 if total > 0 and cnt > 0:
                     top_of_whisker = total + std
                     label_y = top_of_whisker + label_offset
-                    ax.text(pos[i], label_y, f"{total:.3f}", ha="center", va="bottom", fontsize=7)
+                    ax.text(pos[i], label_y, f"{total:.3f}",
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
-            # Add miss percentage labels (rotated, above the total value label)
             for i, (total, miss_rate, cnt) in enumerate(zip(totals, miss_rates, counts)):
                 if total > 0 and cnt > 0 and miss_rate > 0:
                     top_of_whisker = total + totals_stds[i]
                     total_label_y = top_of_whisker + label_offset
                     miss_label_y = total_label_y + max_top * 0.05
-                    ax.text(
-                        pos[i],
-                        miss_label_y,
-                        f"miss {miss_rate:.1f}%",
-                        ha="center",
-                        va="bottom",
-                        fontsize=6.5,
-                        color="red",
-                        fontweight="bold",
-                        rotation=20,
-                    )
+                    ax.text(pos[i], miss_label_y, f"miss {miss_rate:.1f}%",
+                            ha="center", va="bottom", fontsize=6.5, color="red", fontweight="bold",
+                            rotation=20)
                     max_overall_height = max(max_overall_height, miss_label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=False)  # Lower branches/misses is better
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -772,22 +709,8 @@ class PerfGraphGenerator:
             legend_elements = []
             for ct in self.COMPRESSION_TYPES:
                 base = self.COMPRESSION_NAMES[ct]
-                legend_elements.append(
-                    plt.Rectangle(
-                        (0, 0), 1, 1, facecolor=self.COLORS[ct], alpha=0.75, label=f"{base} (hits)"
-                    )
-                )
-                legend_elements.append(
-                    plt.Rectangle(
-                        (0, 0),
-                        1,
-                        1,
-                        facecolor=self.COLORS[ct],
-                        alpha=0.3,
-                        hatch="//",
-                        label=f"{base} (misses)",
-                    )
-                )
+                legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=self.COLORS[ct], alpha=0.75, label=f"{base} (hits)"))
+                legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=self.COLORS[ct], alpha=0.3, hatch="//", label=f"{base} (misses)"))
             ax.legend(handles=legend_elements, loc="center left", bbox_to_anchor=(1.02, 0.5))
 
         ax.grid(True, alpha=0.3, axis="y", linestyle="--")
@@ -804,7 +727,7 @@ class PerfGraphGenerator:
             print(f"  Skipped: relative_branch_prediction_{operation}.svg (no valid branch data)")
 
     def plot_relative_cache_performance(self, operation: str) -> None:
-        """Plot relative cache performance with misses stacked on hits, normalized to Contiguous total cache references."""
+        """Plot relative cache performance with misses stacked on hits."""
         test_files = sorted(self._results.keys())
         if not test_files:
             print("    No data to plot for relative cache performance")
@@ -830,11 +753,8 @@ class PerfGraphGenerator:
             counts = []
 
             for test_file in test_files:
-                # Get Contiguous baseline total cache references
-                cont_baseline = self._get_contiguous_baseline(
-                    test_file, operation, "cache_references"
-                )
-
+                cont_baseline = self._get_contiguous_baseline(test_file, operation, "cache_references")
+                
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list or cont_baseline == 0:
                     hits_means.append(0.0)
@@ -857,12 +777,12 @@ class PerfGraphGenerator:
 
                     total_refs = sum(p.cache_references for p in perfs)
                     total_misses = sum(p.cache_misses for p in perfs)
-
+                    
                     if total_refs > 0 and total_refs >= total_misses:
                         rel_total = total_refs / cont_baseline
                         rel_misses = total_misses / cont_baseline
                         rel_hits = (total_refs - total_misses) / cont_baseline
-
+                        
                         hits_vals.append(rel_hits)
                         misses_vals.append(rel_misses)
                         total_rel_vals.append(rel_total)
@@ -894,49 +814,21 @@ class PerfGraphGenerator:
 
             if any(h > 0 for h in hits_means) or any(m > 0 for m in misses_means):
                 bars_plotted = True
-                # Plot hits (bottom bar)
-                ax.bar(
-                    pos,
-                    hits_means,
-                    width,
-                    label=f"{self.COMPRESSION_NAMES[comp_type]} (hits)",
-                    color=self.COLORS[comp_type],
-                    alpha=0.75,
-                    edgecolor="black",
-                    linewidth=0.8,
-                )
-                # Plot misses (stacked on top)
-                ax.bar(
-                    pos,
-                    misses_means,
-                    width,
-                    bottom=hits_means,
-                    label=f"{self.COMPRESSION_NAMES[comp_type]} (misses)",
-                    color=self.COLORS[comp_type],
-                    alpha=0.3,
-                    edgecolor="black",
-                    linewidth=0.8,
-                    hatch="//",
-                )
+                ax.bar(pos, hits_means, width, label=f"{self.COMPRESSION_NAMES[comp_type]} (hits)",
+                       color=self.COLORS[comp_type],
+                       alpha=0.75, edgecolor="black", linewidth=0.8)
+                ax.bar(pos, misses_means, width, bottom=hits_means,
+                       label=f"{self.COMPRESSION_NAMES[comp_type]} (misses)",
+                       color=self.COLORS[comp_type], alpha=0.3, edgecolor="black", linewidth=0.8, hatch="//")
 
-                # Add error bars on the TOTAL (at the top of the stacked bar)
                 for i, (total, total_std, cnt) in enumerate(zip(totals, totals_stds, counts)):
                     if total > 0 and cnt > 0 and total_std > 0:
-                        ax.errorbar(
-                            pos[i],
-                            total,
-                            yerr=total_std,
-                            fmt="none",
-                            ecolor="black",
-                            capsize=3,
-                            capthick=1,
-                            elinewidth=1,
-                        )
+                        ax.errorbar(pos[i], total, yerr=total_std, fmt='none',
+                                   ecolor='black', capsize=3, capthick=1, elinewidth=1)
 
         max_top = max([t + s for t, s in zip(totals, totals_stds)]) if totals else 1
         label_offset = max_top * 0.02
 
-        # Add labels - re-compute to avoid scope issues
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             hits_means = []
             misses_means = []
@@ -946,10 +838,8 @@ class PerfGraphGenerator:
             counts = []
 
             for test_file in test_files:
-                cont_baseline = self._get_contiguous_baseline(
-                    test_file, operation, "cache_references"
-                )
-
+                cont_baseline = self._get_contiguous_baseline(test_file, operation, "cache_references")
+                
                 metrics_list = self._results[test_file].get(comp_type, [])
                 if not metrics_list or cont_baseline == 0:
                     hits_means.append(0.0)
@@ -971,12 +861,12 @@ class PerfGraphGenerator:
 
                     total_refs = sum(p.cache_references for p in perfs)
                     total_misses = sum(p.cache_misses for p in perfs)
-
+                    
                     if total_refs > 0 and total_refs >= total_misses:
                         rel_total = total_refs / cont_baseline
                         rel_misses = total_misses / cont_baseline
                         rel_hits = (total_refs - total_misses) / cont_baseline
-
+                        
                         hits_vals.append(rel_hits)
                         misses_vals.append(rel_misses)
                         total_rel_vals.append(rel_total)
@@ -996,33 +886,25 @@ class PerfGraphGenerator:
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
-            # Add total value labels above the error bar whiskers
             for i, (total, std, cnt) in enumerate(zip(totals, totals_stds, counts)):
                 if total > 0 and cnt > 0:
                     top_of_whisker = total + std
                     label_y = top_of_whisker + label_offset
-                    ax.text(pos[i], label_y, f"{total:.3f}", ha="center", va="bottom", fontsize=7)
+                    ax.text(pos[i], label_y, f"{total:.3f}",
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
-            # Add miss percentage labels (rotated, above the total value label)
             for i, (total, miss_rate, cnt) in enumerate(zip(totals, miss_rates, counts)):
                 if total > 0 and cnt > 0 and miss_rate > 0:
                     top_of_whisker = total + totals_stds[i]
                     total_label_y = top_of_whisker + label_offset
                     miss_label_y = total_label_y + max_top * 0.05
-                    ax.text(
-                        pos[i],
-                        miss_label_y,
-                        f"miss {miss_rate:.1f}%",
-                        ha="center",
-                        va="bottom",
-                        fontsize=6.5,
-                        color="red",
-                        fontweight="bold",
-                        rotation=20,
-                    )
+                    ax.text(pos[i], miss_label_y, f"miss {miss_rate:.1f}%",
+                            ha="center", va="bottom", fontsize=6.5, color="red", fontweight="bold",
+                            rotation=20)
                     max_overall_height = max(max_overall_height, miss_label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=False)  # Lower cache references/misses is better
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -1032,9 +914,7 @@ class PerfGraphGenerator:
         }
 
         ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
-        ax.set_ylabel(
-            "Relative Cache References (× Contiguous Total)", fontsize=12, fontweight="bold"
-        )
+        ax.set_ylabel("Relative Cache References (× Contiguous Total)", fontsize=12, fontweight="bold")
         ax.set_title(title_map[operation], fontsize=12, fontweight="bold")
         ax.set_xticks(x)
         ax.set_xticklabels([f[:30] for f in test_files], rotation=45, ha="right")
@@ -1043,22 +923,8 @@ class PerfGraphGenerator:
             legend_elements = []
             for ct in self.COMPRESSION_TYPES:
                 base = self.COMPRESSION_NAMES[ct]
-                legend_elements.append(
-                    plt.Rectangle(
-                        (0, 0), 1, 1, facecolor=self.COLORS[ct], alpha=0.75, label=f"{base} (hits)"
-                    )
-                )
-                legend_elements.append(
-                    plt.Rectangle(
-                        (0, 0),
-                        1,
-                        1,
-                        facecolor=self.COLORS[ct],
-                        alpha=0.3,
-                        hatch="//",
-                        label=f"{base} (misses)",
-                    )
-                )
+                legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=self.COLORS[ct], alpha=0.75, label=f"{base} (hits)"))
+                legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=self.COLORS[ct], alpha=0.3, hatch="//", label=f"{base} (misses)"))
             ax.legend(handles=legend_elements, loc="center left", bbox_to_anchor=(1.02, 0.5))
 
         ax.grid(True, alpha=0.3, axis="y", linestyle="--")
@@ -1073,8 +939,6 @@ class PerfGraphGenerator:
             print(f"  Generated: relative_cache_performance_{operation}.svg")
         else:
             print(f"  Skipped: relative_cache_performance_{operation}.svg (no valid cache data)")
-
-    # ===== ABSOLUTE GRAPHS (saved to abs_graph_dir) =====
 
     def plot_instructions_per_cycle(self, operation: str) -> None:
         test_files = sorted(self._results.keys())
@@ -1126,19 +990,11 @@ class PerfGraphGenerator:
 
             if any(m > 0 for m in means):
                 bars_plotted = True
-                ax.bar(
-                    pos,
-                    means,
-                    width,
-                    label=self.COMPRESSION_NAMES[comp_type],
-                    color=self.COLORS[comp_type],
-                    yerr=[s if s > 0 else 0 for s in stds],
-                    capsize=3,
-                    alpha=0.8,
-                    edgecolor="black",
-                    linewidth=0.8,
-                    error_kw={"elinewidth": 1, "capthick": 1},
-                )
+                ax.bar(pos, means, width, label=self.COMPRESSION_NAMES[comp_type],
+                       color=self.COLORS[comp_type],
+                       yerr=[s if s > 0 else 0 for s in stds],
+                       capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
+                       error_kw={'elinewidth': 1, 'capthick': 1})
 
         # Add value labels above error bars
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
@@ -1169,9 +1025,11 @@ class PerfGraphGenerator:
             for i, (m, s) in enumerate(zip(means, stds)):
                 if m > 0:
                     label_y = m + s + (m * 0.01)
-                    ax.text(pos[i], label_y, f"{m:.3f}", ha="center", va="bottom", fontsize=7)
+                    ax.text(pos[i], label_y, f"{m:.3f}",
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=True)  # Higher IPC is better
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -1250,19 +1108,11 @@ class PerfGraphGenerator:
 
             if any(m > 0 for m in means):
                 bars_plotted = True
-                ax.bar(
-                    pos,
-                    means,
-                    width,
-                    label=self.COMPRESSION_NAMES[comp_type],
-                    color=self.COLORS[comp_type],
-                    yerr=[s if s > 0 else 0 for s in stds],
-                    capsize=3,
-                    alpha=0.8,
-                    edgecolor="black",
-                    linewidth=0.8,
-                    error_kw={"elinewidth": 1, "capthick": 1},
-                )
+                ax.bar(pos, means, width, label=self.COMPRESSION_NAMES[comp_type],
+                       color=self.COLORS[comp_type],
+                       yerr=[s if s > 0 else 0 for s in stds],
+                       capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
+                       error_kw={'elinewidth': 1, 'capthick': 1})
 
         # Add value labels above error bars
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
@@ -1292,9 +1142,11 @@ class PerfGraphGenerator:
                 if m > 0:
                     label_y = m + s + (m * 0.01)
                     label = self._format_large_number(m)
-                    ax.text(pos[i], label_y, label, ha="center", va="bottom", fontsize=7)
+                    ax.text(pos[i], label_y, label,
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=False)  # Lower cycles is better
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -1316,9 +1168,7 @@ class PerfGraphGenerator:
         ax.set_axisbelow(True)
 
         if bars_plotted:
-            ax.yaxis.set_major_formatter(
-                plt.FuncFormatter(lambda x, p: self._format_large_number(x))
-            )
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self._format_large_number(x)))
 
         plt.tight_layout()
         output_path = self.abs_graph_dir / f"cycles_{operation}.svg"
@@ -1378,19 +1228,11 @@ class PerfGraphGenerator:
 
             if any(m > 0 for m in means):
                 bars_plotted = True
-                ax.bar(
-                    pos,
-                    means,
-                    width,
-                    label=self.COMPRESSION_NAMES[comp_type],
-                    color=self.COLORS[comp_type],
-                    yerr=[s if s > 0 else 0 for s in stds],
-                    capsize=3,
-                    alpha=0.8,
-                    edgecolor="black",
-                    linewidth=0.8,
-                    error_kw={"elinewidth": 1, "capthick": 1},
-                )
+                ax.bar(pos, means, width, label=self.COMPRESSION_NAMES[comp_type],
+                       color=self.COLORS[comp_type],
+                       yerr=[s if s > 0 else 0 for s in stds],
+                       capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
+                       error_kw={'elinewidth': 1, 'capthick': 1})
 
         # Add value labels above error bars
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
@@ -1420,9 +1262,11 @@ class PerfGraphGenerator:
                 if m > 0:
                     label_y = m + s + (m * 0.01)
                     label = self._format_large_number(m)
-                    ax.text(pos[i], label_y, label, ha="center", va="bottom", fontsize=7)
+                    ax.text(pos[i], label_y, label,
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=False)  # Lower instructions is better
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -1444,9 +1288,7 @@ class PerfGraphGenerator:
         ax.set_axisbelow(True)
 
         if bars_plotted:
-            ax.yaxis.set_major_formatter(
-                plt.FuncFormatter(lambda x, p: self._format_large_number(x))
-            )
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self._format_large_number(x)))
 
         plt.tight_layout()
         output_path = self.abs_graph_dir / f"instructions_{operation}.svg"
@@ -1540,44 +1382,17 @@ class PerfGraphGenerator:
 
             if any(h > 0 for h in hits_means) or any(m > 0 for m in misses_means):
                 bars_plotted = True
-                # Plot hits (bottom bar)
-                ax.bar(
-                    pos,
-                    hits_means,
-                    width,
-                    label=f"{self.COMPRESSION_NAMES[comp_type]} (hits)",
-                    color=self.COLORS[comp_type],
-                    alpha=0.75,
-                    edgecolor="black",
-                    linewidth=0.8,
-                )
-                # Plot misses (stacked on top)
-                ax.bar(
-                    pos,
-                    misses_means,
-                    width,
-                    bottom=hits_means,
-                    label=f"{self.COMPRESSION_NAMES[comp_type]} (misses)",
-                    color=self.COLORS[comp_type],
-                    alpha=0.3,
-                    edgecolor="black",
-                    linewidth=0.8,
-                    hatch="//",
-                )
+                ax.bar(pos, hits_means, width, label=f"{self.COMPRESSION_NAMES[comp_type]} (hits)",
+                       color=self.COLORS[comp_type],
+                       alpha=0.75, edgecolor="black", linewidth=0.8)
+                ax.bar(pos, misses_means, width, bottom=hits_means,
+                       label=f"{self.COMPRESSION_NAMES[comp_type]} (misses)",
+                       color=self.COLORS[comp_type], alpha=0.3, edgecolor="black", linewidth=0.8, hatch="//")
 
-                # Add error bars on the TOTAL (at the top of the stacked bar)
                 for i, (total, total_std, cnt) in enumerate(zip(totals, totals_stds, counts)):
                     if total > 0 and cnt > 0 and total_std > 0:
-                        ax.errorbar(
-                            pos[i],
-                            total,
-                            yerr=total_std,
-                            fmt="none",
-                            ecolor="black",
-                            capsize=3,
-                            capthick=1,
-                            elinewidth=1,
-                        )
+                        ax.errorbar(pos[i], total, yerr=total_std, fmt='none',
+                                   ecolor='black', capsize=3, capthick=1, elinewidth=1)
 
         max_top = max([t + s for t, s in zip(totals, totals_stds)]) if totals else 1
         label_offset = max_top * 0.02
@@ -1633,40 +1448,25 @@ class PerfGraphGenerator:
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
-            # Add total value labels above the error bar whiskers
             for i, (total, std, cnt) in enumerate(zip(totals, totals_stds, counts)):
                 if total > 0 and cnt > 0:
                     top_of_whisker = total + std
                     label_y = top_of_whisker + label_offset
-                    ax.text(
-                        pos[i],
-                        label_y,
-                        self._format_large_number(total),
-                        ha="center",
-                        va="bottom",
-                        fontsize=7,
-                    )
+                    ax.text(pos[i], label_y, self._format_large_number(total),
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
-            # Add miss percentage labels (rotated, above the total value label)
             for i, (total, miss_rate, cnt) in enumerate(zip(totals, miss_rates, counts)):
                 if total > 0 and cnt > 0 and miss_rate > 0:
                     top_of_whisker = total + totals_stds[i]
                     total_label_y = top_of_whisker + label_offset
                     miss_label_y = total_label_y + max_top * 0.05
-                    ax.text(
-                        pos[i],
-                        miss_label_y,
-                        f"miss {miss_rate:.1f}%",
-                        ha="center",
-                        va="bottom",
-                        fontsize=6.5,
-                        color="red",
-                        fontweight="bold",
-                        rotation=20,
-                    )
+                    ax.text(pos[i], miss_label_y, f"miss {miss_rate:.1f}%",
+                            ha="center", va="bottom", fontsize=6.5, color="red", fontweight="bold",
+                            rotation=20)
                     max_overall_height = max(max_overall_height, miss_label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=False)  # Lower branches is better
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -1685,31 +1485,15 @@ class PerfGraphGenerator:
             legend_elements = []
             for ct in self.COMPRESSION_TYPES:
                 base = self.COMPRESSION_NAMES[ct]
-                legend_elements.append(
-                    plt.Rectangle(
-                        (0, 0), 1, 1, facecolor=self.COLORS[ct], alpha=0.75, label=f"{base} (hits)"
-                    )
-                )
-                legend_elements.append(
-                    plt.Rectangle(
-                        (0, 0),
-                        1,
-                        1,
-                        facecolor=self.COLORS[ct],
-                        alpha=0.3,
-                        hatch="//",
-                        label=f"{base} (misses)",
-                    )
-                )
+                legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=self.COLORS[ct], alpha=0.75, label=f"{base} (hits)"))
+                legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=self.COLORS[ct], alpha=0.3, hatch="//", label=f"{base} (misses)"))
             ax.legend(handles=legend_elements, loc="center left", bbox_to_anchor=(1.02, 0.5))
 
         ax.grid(True, alpha=0.3, axis="y", linestyle="--")
         ax.set_axisbelow(True)
 
         if bars_plotted:
-            ax.yaxis.set_major_formatter(
-                plt.FuncFormatter(lambda x, p: self._format_large_number(x))
-            )
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self._format_large_number(x)))
 
         plt.tight_layout()
         output_path = self.abs_graph_dir / f"branch_prediction_{operation}.svg"
@@ -1790,9 +1574,7 @@ class PerfGraphGenerator:
                             rate_vals.append((total_misses / total_refs) * 100.0)
 
                 if cache_level in ["L1", "LLC"]:
-                    miss_mean, miss_std, miss_avg_rel, miss_max_rel, miss_cnt = (
-                        self.calculate_stats(misses_vals)
-                    )
+                    miss_mean, miss_std, miss_avg_rel, miss_max_rel, miss_cnt = self.calculate_stats(misses_vals)
                     t_mean, t_std, t_avg_rel, t_max_rel, t_cnt = self.calculate_stats(total_vals)
                     hits_means.append(0.0)
                     misses_means.append(miss_mean)
@@ -1825,96 +1607,56 @@ class PerfGraphGenerator:
 
             pos = x + (idx - n_types / 2 + 0.5) * width
 
-            all_comp_data.append(
-                {
-                    "comp_type": comp_type,
-                    "pos": pos,
-                    "hits_means": hits_means,
-                    "misses_means": misses_means,
-                    "totals": totals,
-                    "totals_stds": totals_stds,
-                    "miss_rates": miss_rates,
-                    "counts": counts,
-                }
-            )
+            all_comp_data.append({
+                'comp_type': comp_type,
+                'pos': pos,
+                'hits_means': hits_means,
+                'misses_means': misses_means,
+                'totals': totals,
+                'totals_stds': totals_stds,
+                'miss_rates': miss_rates,
+                'counts': counts
+            })
 
             if cache_level in ["L1", "LLC"]:
                 if any(m > 0 for m in misses_means):
                     bars_plotted = True
-                    ax.bar(
-                        pos,
-                        misses_means,
-                        width,
-                        label=self.COMPRESSION_NAMES[comp_type],
-                        color=self.COLORS[comp_type],
-                        yerr=[s if s > 0 else 0 for s in totals_stds],
-                        capsize=3,
-                        alpha=0.8,
-                        edgecolor="black",
-                        linewidth=0.8,
-                        error_kw={"elinewidth": 1, "capthick": 1},
-                    )
+                    ax.bar(pos, misses_means, width, label=self.COMPRESSION_NAMES[comp_type],
+                           color=self.COLORS[comp_type],
+                           yerr=[s if s > 0 else 0 for s in totals_stds],
+                           capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
+                           error_kw={'elinewidth': 1, 'capthick': 1})
             else:
                 if any(h > 0 for h in hits_means) or any(m > 0 for m in misses_means):
                     bars_plotted = True
-                    ax.bar(
-                        pos,
-                        hits_means,
-                        width,
-                        label=f"{self.COMPRESSION_NAMES[comp_type]} (hits)",
-                        color=self.COLORS[comp_type],
-                        alpha=0.75,
-                        edgecolor="black",
-                        linewidth=0.8,
-                    )
-                    ax.bar(
-                        pos,
-                        misses_means,
-                        width,
-                        bottom=hits_means,
-                        label=f"{self.COMPRESSION_NAMES[comp_type]} (misses)",
-                        color=self.COLORS[comp_type],
-                        alpha=0.3,
-                        edgecolor="black",
-                        linewidth=0.8,
-                        hatch="//",
-                    )
+                    ax.bar(pos, hits_means, width, label=f"{self.COMPRESSION_NAMES[comp_type]} (hits)",
+                           color=self.COLORS[comp_type],
+                           alpha=0.75, edgecolor="black", linewidth=0.8)
+                    ax.bar(pos, misses_means, width, bottom=hits_means,
+                           label=f"{self.COMPRESSION_NAMES[comp_type]} (misses)",
+                           color=self.COLORS[comp_type], alpha=0.3, edgecolor="black", linewidth=0.8, hatch="//")
 
                     for i, (total, total_std, cnt) in enumerate(zip(totals, totals_stds, counts)):
                         if total > 0 and cnt > 0 and total_std > 0:
-                            ax.errorbar(
-                                pos[i],
-                                total,
-                                yerr=total_std,
-                                fmt="none",
-                                ecolor="black",
-                                capsize=3,
-                                capthick=1,
-                                elinewidth=1,
-                            )
+                            ax.errorbar(pos[i], total, yerr=total_std, fmt='none',
+                                       ecolor='black', capsize=3, capthick=1, elinewidth=1)
 
         max_top = max([t + s for t, s in zip(totals, totals_stds)]) if totals else 1
         label_offset = max_top * 0.02
 
         for comp_data in all_comp_data:
-            pos = comp_data["pos"]
-            totals = comp_data["totals"]
-            totals_stds = comp_data["totals_stds"]
-            counts = comp_data["counts"]
-            miss_rates = comp_data["miss_rates"]
+            pos = comp_data['pos']
+            totals = comp_data['totals']
+            totals_stds = comp_data['totals_stds']
+            counts = comp_data['counts']
+            miss_rates = comp_data['miss_rates']
 
             for i, (total, std, cnt) in enumerate(zip(totals, totals_stds, counts)):
                 if total > 0 and cnt > 0:
                     top_of_whisker = total + std
                     label_y = top_of_whisker + label_offset
-                    ax.text(
-                        pos[i],
-                        label_y,
-                        self._format_large_number(total),
-                        ha="center",
-                        va="bottom",
-                        fontsize=7,
-                    )
+                    ax.text(pos[i], label_y, self._format_large_number(total),
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
             if cache_level not in ["L1", "LLC"]:
@@ -1923,19 +1665,12 @@ class PerfGraphGenerator:
                         top_of_whisker = total + totals_stds[i]
                         total_label_y = top_of_whisker + label_offset
                         miss_label_y = total_label_y + max_top * 0.05
-                        ax.text(
-                            pos[i],
-                            miss_label_y,
-                            f"miss {miss_rate:.1f}%",
-                            ha="center",
-                            va="bottom",
-                            fontsize=6.5,
-                            color="red",
-                            fontweight="bold",
-                            rotation=20,
-                        )
+                        ax.text(pos[i], miss_label_y, f"miss {miss_rate:.1f}%",
+                                ha="center", va="bottom", fontsize=6.5, color="red", fontweight="bold",
+                                rotation=20)
                         max_overall_height = max(max_overall_height, miss_label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=False)  # Lower cache misses/references is better
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         cache_names = {"L1": "L1 Data Cache", "LLC": "Last Level Cache", "all": "Cache"}
@@ -1958,27 +1693,8 @@ class PerfGraphGenerator:
                 legend_elements = []
                 for ct in self.COMPRESSION_TYPES:
                     base = self.COMPRESSION_NAMES[ct]
-                    legend_elements.append(
-                        plt.Rectangle(
-                            (0, 0),
-                            1,
-                            1,
-                            facecolor=self.COLORS[ct],
-                            alpha=0.75,
-                            label=f"{base} (hits)",
-                        )
-                    )
-                    legend_elements.append(
-                        plt.Rectangle(
-                            (0, 0),
-                            1,
-                            1,
-                            facecolor=self.COLORS[ct],
-                            alpha=0.3,
-                            hatch="//",
-                            label=f"{base} (misses)",
-                        )
-                    )
+                    legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=self.COLORS[ct], alpha=0.75, label=f"{base} (hits)"))
+                    legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=self.COLORS[ct], alpha=0.3, hatch="//", label=f"{base} (misses)"))
                 ax.legend(handles=legend_elements, loc="center left", bbox_to_anchor=(1.02, 0.5))
             else:
                 ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5))
@@ -1987,9 +1703,7 @@ class PerfGraphGenerator:
         ax.set_axisbelow(True)
 
         if bars_plotted:
-            ax.yaxis.set_major_formatter(
-                plt.FuncFormatter(lambda x, p: self._format_large_number(x))
-            )
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self._format_large_number(x)))
 
         plt.tight_layout()
         cache_suffix = {"L1": "l1", "LLC": "llc", "all": "all"}
@@ -2022,17 +1736,15 @@ class PerfGraphGenerator:
                     if rp.cache_references > 0 or wp.cache_references > 0:
                         has_cache_data = True
 
-        print(
-            f"Data detected: cycles={has_cycle_data}, branches={has_branch_data}, cache={has_cache_data}"
-        )
-
+        print(f"Data detected: cycles={has_cycle_data}, branches={has_branch_data}, cache={has_cache_data}")
+        
         operations = ["read", "write", "overall"]
-
+        
         # ===== ABSOLUTE GRAPHS =====
         print("\n" + "=" * 60)
         print("Generating ABSOLUTE value graphs...")
         print("=" * 60)
-
+        
         graph_count = 1
         total_graphs = 21
 
@@ -2042,7 +1754,7 @@ class PerfGraphGenerator:
                 self.plot_instructions_per_cycle(op)
                 graph_count += 1
         else:
-            print(f"  {graph_count}-{graph_count + 2}/{total_graphs}: IPC graphs skipped")
+            print(f"  {graph_count}-{graph_count+2}/{total_graphs}: IPC graphs skipped")
             graph_count += 3
 
         if has_cycle_data:
@@ -2051,7 +1763,7 @@ class PerfGraphGenerator:
                 self.plot_cycle_comparison(op)
                 graph_count += 1
         else:
-            print(f"  {graph_count}-{graph_count + 2}/{total_graphs}: Cycles graphs skipped")
+            print(f"  {graph_count}-{graph_count+2}/{total_graphs}: Cycles graphs skipped")
             graph_count += 3
 
         if has_cycle_data:
@@ -2060,7 +1772,7 @@ class PerfGraphGenerator:
                 self.plot_instruction_comparison(op)
                 graph_count += 1
         else:
-            print(f"  {graph_count}-{graph_count + 2}/{total_graphs}: Instructions graphs skipped")
+            print(f"  {graph_count}-{graph_count+2}/{total_graphs}: Instructions graphs skipped")
             graph_count += 3
 
         if has_branch_data:
@@ -2069,9 +1781,7 @@ class PerfGraphGenerator:
                 self.plot_branch_prediction(op)
                 graph_count += 1
         else:
-            print(
-                f"  {graph_count}-{graph_count + 2}/{total_graphs}: Branch prediction graphs skipped"
-            )
+            print(f"  {graph_count}-{graph_count+2}/{total_graphs}: Branch prediction graphs skipped")
             graph_count += 3
 
         if has_cache_data:
@@ -2080,9 +1790,7 @@ class PerfGraphGenerator:
                 self.plot_cache_performance(op, "all")
                 graph_count += 1
         else:
-            print(
-                f"  {graph_count}-{graph_count + 2}/{total_graphs}: Cache performance graphs skipped"
-            )
+            print(f"  {graph_count}-{graph_count+2}/{total_graphs}: Cache performance graphs skipped")
             graph_count += 3
 
         if has_cache_data:
@@ -2091,7 +1799,7 @@ class PerfGraphGenerator:
                 self.plot_cache_performance(op, "L1")
                 graph_count += 1
         else:
-            print(f"  {graph_count}-{graph_count + 2}/{total_graphs}: L1 cache graphs skipped")
+            print(f"  {graph_count}-{graph_count+2}/{total_graphs}: L1 cache graphs skipped")
             graph_count += 3
 
         if has_cache_data:
@@ -2100,14 +1808,14 @@ class PerfGraphGenerator:
                 self.plot_cache_performance(op, "LLC")
                 graph_count += 1
         else:
-            print(f"  {graph_count}-{graph_count + 2}/{total_graphs}: LLC miss graphs skipped")
+            print(f"  {graph_count}-{graph_count+2}/{total_graphs}: LLC miss graphs skipped")
             graph_count += 3
 
         # ===== RELATIVE GRAPHS =====
         print("\n" + "=" * 60)
         print("Generating RELATIVE value graphs (normalized to Contiguous)...")
         print("=" * 60)
-
+        
         rel_graph_count = 1
         total_rel_graphs = 0
         if has_cycle_data:
@@ -2116,31 +1824,29 @@ class PerfGraphGenerator:
             total_rel_graphs += 3  # Branch prediction × 3 ops
         if has_cache_data:
             total_rel_graphs += 3  # Cache performance × 3 ops
-
+        
         if has_cycle_data:
             for op in operations:
                 print(f"  {rel_graph_count}/{total_rel_graphs}: Relative IPC ({op})")
                 self.plot_relative_metric(op, "ipc", "IPC", higher_is_better=True)
                 rel_graph_count += 1
-
+            
             for op in operations:
                 print(f"  {rel_graph_count}/{total_rel_graphs}: Relative Cycles ({op})")
                 self.plot_relative_metric(op, "cycles", "Cycles", higher_is_better=False)
                 rel_graph_count += 1
-
+            
             for op in operations:
                 print(f"  {rel_graph_count}/{total_rel_graphs}: Relative Instructions ({op})")
-                self.plot_relative_metric(
-                    op, "instructions", "Instructions", higher_is_better=False
-                )
+                self.plot_relative_metric(op, "instructions", "Instructions", higher_is_better=False)
                 rel_graph_count += 1
-
+        
         if has_branch_data:
             for op in operations:
                 print(f"  {rel_graph_count}/{total_rel_graphs}: Relative Branch Prediction ({op})")
                 self.plot_relative_branch_prediction(op)
                 rel_graph_count += 1
-
+        
         if has_cache_data:
             for op in operations:
                 print(f"  {rel_graph_count}/{total_rel_graphs}: Relative Cache Performance ({op})")
@@ -2153,12 +1859,8 @@ class PerfGraphGenerator:
 
 def main() -> None:
     parser = ArgumentParser(description="Generate performance graphs from perf stat data")
-    parser.add_argument(
-        "--result", default="./experiment/result", help="Path to intermediate results directory"
-    )
-    parser.add_argument(
-        "--perf-dir", required=True, help="Directory containing perf stat CSV files"
-    )
+    parser.add_argument("--result", default="./experiment/result", help="Path to intermediate results directory")
+    parser.add_argument("--perf-dir", required=True, help="Directory containing perf stat CSV files")
     parser.add_argument("--graph", default="./experiment/graph", help="Path to graph directory")
 
     args = parser.parse_args()

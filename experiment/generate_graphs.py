@@ -81,7 +81,7 @@ class GraphGenerator:
         self.result_dir = Path(result_dir)
         self.graph_dir = Path(graph_dir)
         self.graph_dir.mkdir(parents=True, exist_ok=True)
-
+        
         # Create subdirectories for absolute and relative graphs
         self.abs_graph_dir = self.graph_dir / "absolute"
         self.rel_graph_dir = self.graph_dir / "relative"
@@ -178,6 +178,14 @@ class GraphGenerator:
 
         return mean_val, std_val, avg_rel_error, max_rel_error, n
 
+    def _add_hint_to_plot(self, ax: plt.Axes, higher_is_better: bool) -> None:
+        """Add a hint text indicating whether higher or lower values are better."""
+        hint_text = "Higher is better" if higher_is_better else "Lower is better"
+        bbox_color = "lightgreen" if higher_is_better else "lightcoral"
+        ax.text(0.02, 0.98, hint_text, transform=ax.transAxes,
+                fontsize=9, verticalalignment="top",
+                bbox=dict(boxstyle="round", facecolor=bbox_color, alpha=0.7))
+
     def _add_error_stats_to_plot(
         self, ax: plt.Axes, all_relative_errors: List[float], max_bar_height: float
     ) -> None:
@@ -212,118 +220,305 @@ class GraphGenerator:
             if new_ymax > current_ylim[1]:
                 ax.set_ylim(0, new_ymax)
 
-    def _get_contiguous_baseline(
-        self, results: Dict, test_file: str, metric: str, operation: str = "overall"
-    ) -> float:
+    def _get_contiguous_baseline(self, results: Dict, test_file: str, metric: str, operation: str = "overall") -> float:
         """Get the Contiguous baseline mean for normalization."""
         cont_metrics = results[test_file].get("cont", [])
         if not cont_metrics:
             return 0.0
-
+        
+        if metric in ["compression_throughput", "decompression_throughput"]:
+            # For throughput, baseline is the actual throughput (with copy time)
+            actual_vals = []
+            for read_m, write_m in cont_metrics:
+                if metric == "compression_throughput":
+                    if operation == "read":
+                        total_time = read_m.comp_ns + read_m.copy_ns
+                        actual = (read_m.decomp_size / 1e6) / (total_time / 1e9) if total_time > 0 and read_m.decomp_size > 0 else 0
+                    elif operation == "write":
+                        total_time = write_m.comp_ns + write_m.copy_ns
+                        actual = (write_m.decomp_size / 1e6) / (total_time / 1e9) if total_time > 0 and write_m.decomp_size > 0 else 0
+                    else:
+                        run_decomp = read_m.decomp_size + write_m.decomp_size
+                        run_comp_ns = read_m.comp_ns + write_m.comp_ns
+                        run_copy_ns = read_m.copy_ns + write_m.copy_ns
+                        total_time = run_comp_ns + run_copy_ns
+                        actual = (run_decomp / 1e6) / (total_time / 1e9) if total_time > 0 else 0
+                else:  # decompression_throughput
+                    if operation == "read":
+                        total_time = read_m.decomp_ns + read_m.copy_ns
+                        actual = (read_m.comp_size / 1e6) / (total_time / 1e9) if total_time > 0 and read_m.comp_size > 0 else 0
+                    elif operation == "write":
+                        total_time = write_m.decomp_ns + write_m.copy_ns
+                        actual = (write_m.comp_size / 1e6) / (total_time / 1e9) if total_time > 0 and write_m.comp_size > 0 else 0
+                    else:
+                        run_comp = read_m.comp_size + write_m.comp_size
+                        run_decomp_ns = read_m.decomp_ns + write_m.decomp_ns
+                        run_copy_ns = read_m.copy_ns + write_m.copy_ns
+                        total_time = run_decomp_ns + run_copy_ns
+                        actual = (run_comp / 1e6) / (total_time / 1e9) if total_time > 0 else 0
+                
+                if actual > 0:
+                    actual_vals.append(actual)
+            
+            return mean(actual_vals) if actual_vals else 0.0
+        
         values = self._extract_metric_values(cont_metrics, metric, operation)
         return mean(values) if values else 0.0
 
-    def _extract_metric_values(
-        self, metrics_list: List[Tuple[IOMetrics, IOMetrics]], metric: str, operation: str
-    ) -> List[float]:
+    def _extract_metric_values(self, metrics_list: List[Tuple[IOMetrics, IOMetrics]], metric: str, operation: str) -> List[float]:
         """Extract metric values from a list of (read_metrics, write_metrics) tuples."""
         values = []
-
+        
         for read_m, write_m in metrics_list:
             val = self._calculate_single_metric(read_m, write_m, metric, operation)
             if val > 0:
                 values.append(val)
-
+        
         return values
 
-    def _calculate_single_metric(
-        self, read_m: IOMetrics, write_m: IOMetrics, metric: str, operation: str
-    ) -> float:
+    def _calculate_single_metric(self, read_m: IOMetrics, write_m: IOMetrics, metric: str, operation: str) -> float:
         """Calculate a single metric value from read and write metrics."""
         if metric == "compression_ratio":
             total_decomp = read_m.decomp_size + write_m.decomp_size
             total_comp = read_m.comp_size + write_m.comp_size
             return total_decomp / total_comp if total_comp > 0 else 0.0
-
+        
         elif metric == "memory_usage":
             total_mem = read_m.mem_usage + write_m.mem_usage
             total_reqs = read_m.reqs_total + write_m.reqs_total
             total_failed = read_m.reqs_failed + write_m.reqs_failed
             successful_reqs = total_reqs - total_failed
-            return (
-                (total_mem / successful_reqs / 1024)
-                if successful_reqs > 0 and total_mem > 0
-                else 0.0
-            )
-
+            return (total_mem / successful_reqs / 1024) if successful_reqs > 0 and total_mem > 0 else 0.0
+        
         elif metric == "compression_throughput":
             if operation == "read":
                 total_time = read_m.comp_ns + read_m.copy_ns
-                return (
-                    (read_m.decomp_size / 1e6) / (total_time / 1e9)
-                    if total_time > 0 and read_m.decomp_size > 0
-                    else 0.0
-                )
+                return (read_m.decomp_size / 1e6) / (total_time / 1e9) if total_time > 0 and read_m.decomp_size > 0 else 0.0
             elif operation == "write":
                 total_time = write_m.comp_ns + write_m.copy_ns
-                return (
-                    (write_m.decomp_size / 1e6) / (total_time / 1e9)
-                    if total_time > 0 and write_m.decomp_size > 0
-                    else 0.0
-                )
+                return (write_m.decomp_size / 1e6) / (total_time / 1e9) if total_time > 0 and write_m.decomp_size > 0 else 0.0
             else:  # overall
                 run_decomp = read_m.decomp_size + write_m.decomp_size
                 run_comp_ns = read_m.comp_ns + write_m.comp_ns
                 run_copy_ns = read_m.copy_ns + write_m.copy_ns
                 total_time = run_comp_ns + run_copy_ns
                 return (run_decomp / 1e6) / (total_time / 1e9) if total_time > 0 else 0.0
-
+        
         elif metric == "decompression_throughput":
             if operation == "read":
                 total_time = read_m.decomp_ns + read_m.copy_ns
-                return (
-                    (read_m.comp_size / 1e6) / (total_time / 1e9)
-                    if total_time > 0 and read_m.comp_size > 0
-                    else 0.0
-                )
+                return (read_m.comp_size / 1e6) / (total_time / 1e9) if total_time > 0 and read_m.comp_size > 0 else 0.0
             elif operation == "write":
                 total_time = write_m.decomp_ns + write_m.copy_ns
-                return (
-                    (write_m.comp_size / 1e6) / (total_time / 1e9)
-                    if total_time > 0 and write_m.comp_size > 0
-                    else 0.0
-                )
+                return (write_m.comp_size / 1e6) / (total_time / 1e9) if total_time > 0 and write_m.comp_size > 0 else 0.0
             else:  # overall
                 run_comp = read_m.comp_size + write_m.comp_size
                 run_decomp_ns = read_m.decomp_ns + write_m.decomp_ns
                 run_copy_ns = read_m.copy_ns + write_m.copy_ns
                 total_time = run_decomp_ns + run_copy_ns
                 return (run_comp / 1e6) / (total_time / 1e9) if total_time > 0 else 0.0
-
+        
         elif metric == "total_throughput":
             if operation == "read":
-                return (
-                    (read_m.decomp_size / 1e6) / (read_m.total_ns / 1e9)
-                    if read_m.total_ns > 0 and read_m.decomp_size > 0
-                    else 0.0
-                )
+                return (read_m.decomp_size / 1e6) / (read_m.total_ns / 1e9) if read_m.total_ns > 0 and read_m.decomp_size > 0 else 0.0
             elif operation == "write":
-                return (
-                    (write_m.decomp_size / 1e6) / (write_m.total_ns / 1e9)
-                    if write_m.total_ns > 0 and write_m.decomp_size > 0
-                    else 0.0
-                )
+                return (write_m.decomp_size / 1e6) / (write_m.total_ns / 1e9) if write_m.total_ns > 0 and write_m.decomp_size > 0 else 0.0
             else:  # overall
                 run_decomp = read_m.decomp_size + write_m.decomp_size
                 run_time = read_m.total_ns + write_m.total_ns
                 return (run_decomp / 1e6) / (run_time / 1e9) if run_time > 0 else 0.0
-
+        
         return 0.0
 
-    def _plot_relative_metric(
-        self, results: Dict, metric: str, metric_name: str, operation: str = "overall"
-    ) -> None:
-        """Generate relative performance graph for a specific compression metric."""
+    def _plot_relative_throughput(self, results: Dict, metric: str, metric_name: str, operation: str = "overall", higher_is_better: bool = True) -> None:
+        """Generate relative throughput graph with copy loss stacked bars."""
+        test_files = list(results.keys())
+        n_files = len(test_files)
+        n_types = len(self.COMPRESSION_TYPES)
+
+        fig, ax = plt.subplots(figsize=(16, 7))
+        x = arange(n_files)
+        width = 0.8 / n_types
+
+        bars_plotted = False
+        all_rel_errors = []
+        max_overall_height = 0.0
+
+        for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
+            base_throughputs = []  # Actual throughput relative to Contiguous
+            copy_overheads = []    # Copy loss relative to Contiguous
+            base_stds = []
+
+            for test_file in test_files:
+                # Get Contiguous baseline (actual throughput with copy time)
+                cont_baseline = self._get_contiguous_baseline(results, test_file, metric, operation)
+                
+                metrics_list = results[test_file].get(comp_type, [])
+                if not metrics_list or cont_baseline == 0:
+                    base_throughputs.append(0.0)
+                    copy_overheads.append(0.0)
+                    base_stds.append(0.0)
+                    continue
+
+                values_actual = []
+                values_ideal = []
+
+                for read_m, write_m in metrics_list:
+                    if metric == "compression_throughput":
+                        if operation == "read":
+                            if read_m.comp_ns > 0 and read_m.decomp_size > 0:
+                                total_time = read_m.comp_ns + read_m.copy_ns
+                                tp_actual = (read_m.decomp_size / 1e6) / (total_time / 1e9) if total_time > 0 else 0
+                                tp_ideal = (read_m.decomp_size / 1e6) / (read_m.comp_ns / 1e9)
+                                values_actual.append(tp_actual)
+                                values_ideal.append(tp_ideal)
+                        elif operation == "write":
+                            if write_m.comp_ns > 0 and write_m.decomp_size > 0:
+                                total_time = write_m.comp_ns + write_m.copy_ns
+                                tp_actual = (write_m.decomp_size / 1e6) / (total_time / 1e9) if total_time > 0 else 0
+                                tp_ideal = (write_m.decomp_size / 1e6) / (write_m.comp_ns / 1e9)
+                                values_actual.append(tp_actual)
+                                values_ideal.append(tp_ideal)
+                        else:  # overall
+                            run_decomp = read_m.decomp_size + write_m.decomp_size
+                            run_comp_ns = read_m.comp_ns + write_m.comp_ns
+                            run_copy_ns = read_m.copy_ns + write_m.copy_ns
+                            if run_comp_ns > 0:
+                                total_time = run_comp_ns + run_copy_ns
+                                tp_actual = (run_decomp / 1e6) / (total_time / 1e9) if total_time > 0 else 0
+                                tp_ideal = (run_decomp / 1e6) / (run_comp_ns / 1e9)
+                                values_actual.append(tp_actual)
+                                values_ideal.append(tp_ideal)
+                    else:  # decompression_throughput
+                        if operation == "read":
+                            if read_m.decomp_ns > 0 and read_m.comp_size > 0:
+                                total_time = read_m.decomp_ns + read_m.copy_ns
+                                tp_actual = (read_m.comp_size / 1e6) / (total_time / 1e9) if total_time > 0 else 0
+                                tp_ideal = (read_m.comp_size / 1e6) / (read_m.decomp_ns / 1e9)
+                                values_actual.append(tp_actual)
+                                values_ideal.append(tp_ideal)
+                        elif operation == "write":
+                            if write_m.decomp_ns > 0 and write_m.comp_size > 0:
+                                total_time = write_m.decomp_ns + write_m.copy_ns
+                                tp_actual = (write_m.comp_size / 1e6) / (total_time / 1e9) if total_time > 0 else 0
+                                tp_ideal = (write_m.comp_size / 1e6) / (write_m.decomp_ns / 1e9)
+                                values_actual.append(tp_actual)
+                                values_ideal.append(tp_ideal)
+                        else:  # overall
+                            run_comp = read_m.comp_size + write_m.comp_size
+                            run_decomp_ns = read_m.decomp_ns + write_m.decomp_ns
+                            run_copy_ns = read_m.copy_ns + write_m.copy_ns
+                            if run_decomp_ns > 0:
+                                total_time = run_decomp_ns + run_copy_ns
+                                tp_actual = (run_comp / 1e6) / (total_time / 1e9) if total_time > 0 else 0
+                                tp_ideal = (run_comp / 1e6) / (run_decomp_ns / 1e9)
+                                values_actual.append(tp_actual)
+                                values_ideal.append(tp_ideal)
+
+                if values_actual:
+                    # Normalize to Contiguous baseline
+                    rel_actual = [v / cont_baseline for v in values_actual]
+                    rel_ideal = [v / cont_baseline for v in values_ideal]
+                    
+                    mean_actual, std_actual, avg_rel_err, max_rel_err, _ = self.calculate_stats(rel_actual)
+                    mean_ideal, _, _, _, _ = self.calculate_stats(rel_ideal)
+                    
+                    overhead = mean_ideal - mean_actual if mean_ideal > mean_actual else 0
+                    
+                    base_throughputs.append(mean_actual)
+                    copy_overheads.append(overhead)
+                    base_stds.append(std_actual)
+                    all_rel_errors.append(avg_rel_err)
+                    all_rel_errors.append(max_rel_err)
+                else:
+                    base_throughputs.append(0.0)
+                    copy_overheads.append(0.0)
+                    base_stds.append(0.0)
+
+            pos = x + (idx - n_types / 2 + 0.5) * width
+            has_overhead = any(o > 0 for o in copy_overheads)
+
+            if has_overhead:
+                bars_plotted = True
+                # Draw base bar (actual throughput)
+                ax.bar(pos, base_throughputs, width,
+                       label=f"{self.COMPRESSION_NAMES[comp_type]} (actual)",
+                       color=self.COLORS[comp_type],
+                       yerr=base_stds,
+                       capsize=3, alpha=0.75, edgecolor="black", linewidth=0.8,
+                       error_kw={"elinewidth": 1, "capthick": 1})
+
+                # Draw copy loss on top
+                ax.bar(pos, copy_overheads, width, bottom=base_throughputs,
+                       label=f"{self.COMPRESSION_NAMES[comp_type]} (copy loss)",
+                       color=self.COLORS[comp_type], alpha=0.3, edgecolor="none", linewidth=0)
+
+                # Label only the actual throughput value (bottom bar)
+                for i, (base, std) in enumerate(zip(base_throughputs, base_stds)):
+                    if base > 0:
+                        label_y = base + std + (base * 0.01)
+                        ax.text(pos[i], label_y, f"{base:.3f}", ha="center", va="bottom", fontsize=7)
+                        max_overall_height = max(max_overall_height, label_y)
+            else:
+                if any(b > 0 for b in base_throughputs):
+                    bars_plotted = True
+                bars = ax.bar(pos, base_throughputs, width,
+                       label=self.COMPRESSION_NAMES[comp_type],
+                       color=self.COLORS[comp_type],
+                       yerr=base_stds,
+                       capsize=3, alpha=0.75, edgecolor="black", linewidth=0.8,
+                       error_kw={"elinewidth": 1, "capthick": 1})
+
+                for i, (val, std) in enumerate(zip(base_throughputs, base_stds)):
+                    if val > 0:
+                        label_y = val + std + (val * 0.01)
+                        ax.text(pos[i], label_y, f"{val:.3f}", ha="center", va="bottom", fontsize=7)
+                        max_overall_height = max(max_overall_height, label_y)
+
+        self._add_hint_to_plot(ax, higher_is_better)
+        self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
+
+        # Build title
+        if operation == "overall":
+            title = f"Relative {metric_name}"
+        else:
+            title = f"Relative {metric_name} ({operation.capitalize()} Operation)"
+        
+        ylabel = f"Relative {metric_name} (× Contiguous)"
+
+        ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
+        ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
+        ax.set_title(title, fontsize=13, fontweight="bold")
+        ax.set_xticks(x)
+        ax.set_xticklabels([Path(f).name for f in test_files], rotation=45, ha="right")
+
+        if bars_plotted:
+            handles, labels = ax.get_legend_handles_labels()
+            unique = dict(zip(labels, handles))
+            ax.legend(unique.values(), unique.keys(), loc="center left", bbox_to_anchor=(1.02, 0.5))
+
+        ax.grid(True, alpha=0.3, axis="y", linestyle="--")
+        ax.set_axisbelow(True)
+
+        plt.tight_layout()
+        
+        # Build filename
+        if operation == "overall":
+            filename = f"relative_{metric}.svg"
+        else:
+            filename = f"relative_{metric}_{operation}.svg"
+        
+        output_path = self.rel_graph_dir / filename
+        plt.savefig(output_path, format="svg", bbox_inches="tight")
+        plt.close()
+
+        if bars_plotted:
+            print(f"  Generated: {filename}")
+        else:
+            print(f"  Skipped: {filename} (no data)")
+
+    def _plot_relative_metric(self, results: Dict, metric: str, metric_name: str, operation: str = "overall", higher_is_better: bool = True) -> None:
+        """Generate relative performance graph for a non-throughput metric."""
         test_files = list(results.keys())
         n_files = len(test_files)
         n_types = len(self.COMPRESSION_TYPES)
@@ -341,9 +536,7 @@ class GraphGenerator:
             for test_file in test_files:
                 if comp_type == "cont":
                     # Contiguous is always 1.0
-                    cont_baseline = self._get_contiguous_baseline(
-                        results, test_file, metric, operation
-                    )
+                    cont_baseline = self._get_contiguous_baseline(results, test_file, metric, operation)
                     if cont_baseline > 0:
                         means.append(1.0)
                         stds.append(0.0)
@@ -351,14 +544,12 @@ class GraphGenerator:
                         means.append(0.0)
                         stds.append(0.0)
                 else:
-                    cont_baseline = self._get_contiguous_baseline(
-                        results, test_file, metric, operation
-                    )
+                    cont_baseline = self._get_contiguous_baseline(results, test_file, metric, operation)
                     if cont_baseline == 0:
                         means.append(0.0)
                         stds.append(0.0)
                         continue
-
+                    
                     metrics_list = results[test_file].get(comp_type, [])
                     if not metrics_list:
                         means.append(0.0)
@@ -371,9 +562,7 @@ class GraphGenerator:
                         if val > 0:
                             rel_values.append(val / cont_baseline)
 
-                    mean_val, std_val, avg_rel_err, max_rel_err, n = self.calculate_stats(
-                        rel_values
-                    )
+                    mean_val, std_val, avg_rel_err, max_rel_err, n = self.calculate_stats(rel_values)
                     means.append(mean_val)
                     stds.append(std_val)
                     if n > 1:
@@ -384,28 +573,18 @@ class GraphGenerator:
 
             if any(m > 0 for m in means):
                 bars_plotted = True
-                ax.bar(
-                    pos,
-                    means,
-                    width,
-                    label=self.COMPRESSION_NAMES[comp_type],
-                    color=self.COLORS[comp_type],
-                    yerr=[s if s > 0 else 0 for s in stds],
-                    capsize=3,
-                    alpha=0.8,
-                    edgecolor="black",
-                    linewidth=0.8,
-                    error_kw={"elinewidth": 1, "capthick": 1},
-                )
+                ax.bar(pos, means, width, label=self.COMPRESSION_NAMES[comp_type],
+                       color=self.COLORS[comp_type],
+                       yerr=[s if s > 0 else 0 for s in stds],
+                       capsize=3, alpha=0.8, edgecolor="black", linewidth=0.8,
+                       error_kw={'elinewidth': 1, 'capthick': 1})
 
         # Add value labels above error bars
         for idx, comp_type in enumerate(self.COMPRESSION_TYPES):
             means, stds = [], []
             for test_file in test_files:
                 if comp_type == "cont":
-                    cont_baseline = self._get_contiguous_baseline(
-                        results, test_file, metric, operation
-                    )
+                    cont_baseline = self._get_contiguous_baseline(results, test_file, metric, operation)
                     if cont_baseline > 0:
                         means.append(1.0)
                         stds.append(0.0)
@@ -413,14 +592,12 @@ class GraphGenerator:
                         means.append(0.0)
                         stds.append(0.0)
                 else:
-                    cont_baseline = self._get_contiguous_baseline(
-                        results, test_file, metric, operation
-                    )
+                    cont_baseline = self._get_contiguous_baseline(results, test_file, metric, operation)
                     if cont_baseline == 0:
                         means.append(0.0)
                         stds.append(0.0)
                         continue
-
+                    
                     metrics_list = results[test_file].get(comp_type, [])
                     if not metrics_list:
                         means.append(0.0)
@@ -441,9 +618,11 @@ class GraphGenerator:
             for i, (m, s) in enumerate(zip(means, stds)):
                 if m > 0:
                     label_y = m + s + (m * 0.01)
-                    ax.text(pos[i], label_y, f"{m:.3f}", ha="center", va="bottom", fontsize=7)
+                    ax.text(pos[i], label_y, f"{m:.3f}",
+                            ha="center", va="bottom", fontsize=7)
                     max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better)
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         # Build title
@@ -451,7 +630,7 @@ class GraphGenerator:
             title = f"Relative {metric_name}"
         else:
             title = f"Relative {metric_name} ({operation.capitalize()} Operation)"
-
+        
         ylabel = f"Relative {metric_name} (× Contiguous)"
 
         ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
@@ -467,13 +646,13 @@ class GraphGenerator:
         ax.set_axisbelow(True)
 
         plt.tight_layout()
-
+        
         # Build filename
         if operation == "overall":
             filename = f"relative_{metric}.svg"
         else:
             filename = f"relative_{metric}_{operation}.svg"
-
+        
         output_path = self.rel_graph_dir / filename
         plt.savefig(output_path, format="svg", bbox_inches="tight")
         plt.close()
@@ -552,6 +731,7 @@ class GraphGenerator:
                     )
                     max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=True)
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
@@ -642,6 +822,7 @@ class GraphGenerator:
                     )
                     max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=False)
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         ax.set_xlabel("Test Files", fontsize=12, fontweight="bold")
@@ -844,6 +1025,7 @@ class GraphGenerator:
                         )
                         max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=True)
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -1057,6 +1239,7 @@ class GraphGenerator:
                         )
                         max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=True)
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -1192,6 +1375,7 @@ class GraphGenerator:
                     )
                     max_overall_height = max(max_overall_height, label_y)
 
+        self._add_hint_to_plot(ax, higher_is_better=True)
         self._add_error_stats_to_plot(ax, all_rel_errors, max_overall_height)
 
         title_map = {
@@ -1229,12 +1413,12 @@ class GraphGenerator:
         print(f"Found {len(results)} test files with results\n")
 
         operations = ["read", "write", "overall"]
-
+        
         # ===== ABSOLUTE GRAPHS =====
         print("=" * 60)
         print("Generating ABSOLUTE value graphs...")
         print("=" * 60)
-
+        
         graph_count = 1
         total_abs_graphs = 11
 
@@ -1265,42 +1449,36 @@ class GraphGenerator:
         print("\n" + "=" * 60)
         print("Generating RELATIVE value graphs (normalized to Contiguous)...")
         print("=" * 60)
-
+        
         rel_graph_count = 1
         total_rel_graphs = 11
 
-        # Compression ratio (overall only)
+        # Compression ratio (overall only) - higher is better
         print(f"  {rel_graph_count}/{total_rel_graphs}: Relative compression ratio")
-        self._plot_relative_metric(results, "compression_ratio", "Compression Ratio")
+        self._plot_relative_metric(results, "compression_ratio", "Compression Ratio", higher_is_better=True)
         rel_graph_count += 1
 
-        # Memory usage (overall only)
+        # Memory usage (overall only) - lower is better
         print(f"  {rel_graph_count}/{total_rel_graphs}: Relative memory usage")
-        self._plot_relative_metric(results, "memory_usage", "Memory Usage")
+        self._plot_relative_metric(results, "memory_usage", "Memory Usage", higher_is_better=False)
         rel_graph_count += 1
 
-        # Compression throughput (read, write, overall)
+        # Compression throughput (read, write, overall) - higher is better
         for op in operations:
             print(f"  {rel_graph_count}/{total_rel_graphs}: Relative compression throughput ({op})")
-            self._plot_relative_metric(
-                results, "compression_throughput", "Compression Throughput", op
-            )
+            self._plot_relative_throughput(results, "compression_throughput", "Compression Throughput", op, higher_is_better=True)
             rel_graph_count += 1
 
-        # Decompression throughput (read, write, overall)
+        # Decompression throughput (read, write, overall) - higher is better
         for op in operations:
-            print(
-                f"  {rel_graph_count}/{total_rel_graphs}: Relative decompression throughput ({op})"
-            )
-            self._plot_relative_metric(
-                results, "decompression_throughput", "Decompression Throughput", op
-            )
+            print(f"  {rel_graph_count}/{total_rel_graphs}: Relative decompression throughput ({op})")
+            self._plot_relative_throughput(results, "decompression_throughput", "Decompression Throughput", op, higher_is_better=True)
             rel_graph_count += 1
 
-        # Total throughput (read, write, overall)
+        # Total throughput (read, write, overall) - higher is better
         for op in operations:
             print(f"  {rel_graph_count}/{total_rel_graphs}: Relative total throughput ({op})")
-            self._plot_relative_metric(results, "total_throughput", "Total Throughput", op)
+            self._plot_relative_metric(results, "total_throughput", "Total Throughput", op, higher_is_better=True)
             rel_graph_count += 1
 
         print(f"\nAbsolute graphs saved to: {self.abs_graph_dir}")

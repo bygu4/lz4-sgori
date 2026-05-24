@@ -218,7 +218,7 @@ class LZ4Experiment:
 
     def _get_count(self, file_size: int) -> int:
         """Calculate count parameter for dd (number of blocks)."""
-        return (file_size + self.bs_bytes - 1) // self.bs_bytes
+        return file_size // self.bs_bytes
 
     def _run_dd_write(self, input_file: Path, count: int) -> bool:
         """Run dd write operation without perf."""
